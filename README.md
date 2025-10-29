@@ -1,2 +1,1 @@
-# stagnant-illusion
-静滞虚幻
+# 静滞虚幻
