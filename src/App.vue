@@ -250,7 +250,16 @@
 
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue'
-import { StagnantIllusion, type CompositionOptions } from './stagnant-illusion'
+
+interface CompositionOptions {
+  posX: number
+  posY: number
+  scale: number
+  opacity: number
+  brightness: number
+  useCover: boolean
+  coverOpacity: number
+}
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const baseImageFile = ref<File[]>([])
@@ -264,23 +273,243 @@ const brightness = ref(100)
 const useCover = ref(true)
 const coverOpacity = ref(1)
 
-let composer: StagnantIllusion | null = null
+// Image composition state
+let ctx: CanvasRenderingContext2D | null = null
+let currentBaseImg: HTMLImageElement | null = null
+let overlayImg: HTMLImageElement | null = null
+let coverImg: HTMLImageElement | null = null
+let baseScale = 1
+let imagesLoaded = false
+let baseImageFileName = ''
+
+/**
+ * 加载覆盖层和封面图像
+ */
+async function loadAssets(prtsImageUrl: string, coverImageUrl: string): Promise<void> {
+  overlayImg = new Image()
+  overlayImg.crossOrigin = 'anonymous'
+
+  coverImg = new Image()
+  coverImg.crossOrigin = 'anonymous'
+
+  await Promise.all([
+    new Promise<void>((resolve, reject) => {
+      if (overlayImg) {
+        overlayImg.onload = () => {
+          console.log('Overlay image loaded:', overlayImg?.width, overlayImg?.height)
+          resolve()
+        }
+        overlayImg.onerror = (e) => {
+          console.error('Failed to load overlay image:', e)
+          reject(new Error('Failed to load overlay image'))
+        }
+        overlayImg.src = prtsImageUrl
+      }
+    }),
+    new Promise<void>((resolve, reject) => {
+      if (coverImg) {
+        coverImg.onload = () => {
+          console.log('Cover image loaded:', coverImg?.width, coverImg?.height)
+          resolve()
+        }
+        coverImg.onerror = (e) => {
+          console.error('Failed to load cover image:', e)
+          reject(new Error('Failed to load cover image'))
+        }
+        coverImg.src = coverImageUrl
+      }
+    })
+  ])
+
+  imagesLoaded = true
+  console.log('All images loaded successfully')
+}
+
+/**
+ * 计算基础缩放比例
+ */
+function calculateBaseScale(): number {
+  if (!currentBaseImg || !overlayImg) return 1
+  const widthRatio = currentBaseImg.width / overlayImg.width
+  const heightRatio = currentBaseImg.height / overlayImg.height
+  return Math.min(widthRatio, heightRatio) * 1.5
+}
+
+/**
+ * 设置基础图像
+ */
+async function setBaseImage(file: File): Promise<void> {
+  console.log('Loading base image...')
+
+  currentBaseImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        console.log('Base image loaded:', img.width, img.height)
+        if (canvasRef.value) {
+          canvasRef.value.width = img.width
+          canvasRef.value.height = img.height
+          console.log('Canvas resized to:', img.width, img.height)
+        }
+        resolve(img)
+      }
+      img.onerror = (err) => {
+        console.error('Failed to load image:', err)
+        reject(new Error('Failed to load image'))
+      }
+      img.src = e.target?.result as string
+    }
+    reader.onerror = (err) => {
+      console.error('FileReader error:', err)
+      reject(new Error('Failed to read file'))
+    }
+    reader.readAsDataURL(file)
+  })
+
+  // 等待覆盖层图像加载完成
+  if (!imagesLoaded || !overlayImg || !overlayImg.complete) {
+    console.log('Waiting for overlay images to load...')
+    await new Promise<void>((resolve) => {
+      const checkInterval = setInterval(() => {
+        if (imagesLoaded && overlayImg && overlayImg.complete) {
+          clearInterval(checkInterval)
+          console.log('Overlay images ready')
+          resolve()
+        }
+      }, 100)
+
+      // 超时保护
+      setTimeout(() => {
+        clearInterval(checkInterval)
+        console.warn('Timeout waiting for overlay images')
+        resolve()
+      }, 5000)
+    })
+  }
+
+  baseScale = calculateBaseScale()
+  console.log('Base scale calculated:', baseScale)
+}
+
+/**
+ * 合成图像
+ */
+function compose(options: CompositionOptions): void {
+  if (!currentBaseImg) {
+    console.log('Cannot compose: No base image loaded')
+    return
+  }
+
+  if (!overlayImg) {
+    console.log('Cannot compose: No overlay image loaded')
+    return
+  }
+
+  if (!overlayImg.complete) {
+    console.log('Cannot compose: Overlay image not fully loaded yet')
+    return
+  }
+
+  if (!ctx || !canvasRef.value) {
+    console.log('Cannot compose: Canvas context not initialized')
+    return
+  }
+
+  console.log('Starting composition with options:', options)
+
+  // 清空画布
+  ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
+
+  // 绘制基础图像（带亮度调整）
+  ctx.globalAlpha = 1
+  ctx.filter = `brightness(${options.brightness}%)`
+  ctx.drawImage(currentBaseImg, 0, 0)
+  ctx.filter = 'brightness(100%)'
+
+  // 创建中间画布用于处理覆盖层效果
+  const intermediateCanvas = document.createElement('canvas')
+  intermediateCanvas.width = canvasRef.value.width
+  intermediateCanvas.height = canvasRef.value.height
+  const iCtx = intermediateCanvas.getContext('2d')
+  if (!iCtx) {
+    console.error('Failed to create intermediate canvas context')
+    return
+  }
+
+  // 绘制半透明黑色背景
+  iCtx.fillStyle = 'rgba(0, 0, 0, 0.77)'
+  iCtx.fillRect(0, 0, intermediateCanvas.width, intermediateCanvas.height)
+
+  // 计算覆盖层图像的位置和大小
+  const scaleFactor = baseScale * options.scale
+  const posXValue = Math.floor(options.posX * canvasRef.value.width)
+  const posYValue = Math.floor(options.posY * canvasRef.value.height)
+
+  const imgWidth = overlayImg.width * scaleFactor
+  const imgHeight = overlayImg.height * scaleFactor
+  const centerX = (canvasRef.value.width - imgWidth) / 2 + posXValue
+  const centerY = (canvasRef.value.height - imgHeight) / 2 + posYValue
+
+  // 使用混合模式创建镂空效果
+  iCtx.globalCompositeOperation = 'destination-out'
+  iCtx.drawImage(overlayImg, centerX, centerY, imgWidth, imgHeight)
+  iCtx.globalCompositeOperation = 'source-over'
+  iCtx.drawImage(overlayImg, centerX, centerY, imgWidth, imgHeight)
+
+  // 将中间画布合成到主画布
+  ctx.globalAlpha = options.opacity
+  ctx.drawImage(intermediateCanvas, 0, 0)
+
+  // 如果需要，绘制封面图像
+  if (options.useCover && coverImg && coverImg.complete) {
+    ctx.globalAlpha = options.coverOpacity
+    ctx.drawImage(coverImg, 0, 0, canvasRef.value.width, canvasRef.value.height)
+  }
+
+  // 重置全局透明度
+  ctx.globalAlpha = 1
+
+  console.log('Image composed successfully')
+}
+
+/**
+ * 检查是否已加载基础图像
+ */
+function hasBaseImage(): boolean {
+  return currentBaseImg !== null
+}
+
+/**
+ * 保存当前画布为图像
+ */
+function saveImageToFile(filename = '下载.png'): void {
+  if (!currentBaseImg || !canvasRef.value) return
+  const link = document.createElement('a')
+  link.download = filename
+  link.href = canvasRef.value.toDataURL('image/png')
+  link.click()
+}
 
 onMounted(async () => {
   if (!canvasRef.value) return
 
-  // 初始化合成器
-  composer = new StagnantIllusion(canvasRef.value)
+  // 获取2D上下文
+  ctx = canvasRef.value.getContext('2d')
+  if (!ctx) {
+    console.error('Failed to get 2D context')
+    return
+  }
 
   // 动态导入图像
   const [prtsModule, coverModule] = await Promise.all([
-    import('@/assets/prts.png'),
-    import('@/assets/cover.png')
+    import('@/assets/stagnant-illusion.png'),
+    import('@/assets/yellow.png')
   ])
 
   // 加载资源
   try {
-    await composer.loadAssets(prtsModule.default, coverModule.default)
+    await loadAssets(prtsModule.default, coverModule.default)
   } catch (error) {
     console.error('Failed to load assets:', error)
   }
@@ -299,7 +528,7 @@ function getCompositionOptions(): CompositionOptions {
 }
 
 function restoreDefault() {
-  if (!composer?.hasBaseImage()) return
+  if (!hasBaseImage()) return
   scale.value = 1
   posX.value = 0
   posY.value = 0
@@ -311,21 +540,21 @@ function restoreDefault() {
 }
 
 function composeImages() {
-  if (!composer) return
-  composer.compose(getCompositionOptions())
+  compose(getCompositionOptions())
 }
 
 async function handleImageUpload(files: File | File[] | null) {
   const file = Array.isArray(files) ? files[0] : files
-  if (!file || !composer) {
-    console.log('No file selected or composer not initialized', { file, composer })
+  if (!file) {
+    console.log('No file selected')
     return
   }
 
   loading.value = true
   try {
     console.log('Starting image upload:', file.name)
-    await composer.setBaseImage(file)
+    baseImageFileName = file.name
+    await setBaseImage(file)
     console.log('Base image set successfully')
 
     // Reset to default values
@@ -352,8 +581,11 @@ async function handleImageUpload(files: File | File[] | null) {
 }
 
 function saveImage() {
-  if (!composer?.hasBaseImage()) return
-  composer.saveImage('下载.png')
+  if (!hasBaseImage()) return
+  // 从原始文件名中提取名称部分（不包括扩展名）
+  const nameWithoutExt = baseImageFileName.substring(0, baseImageFileName.lastIndexOf('.')) || baseImageFileName
+  const filename = `${nameWithoutExt}-prts.png`
+  saveImageToFile(filename)
 }
 </script>
 
