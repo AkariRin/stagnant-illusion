@@ -1,6 +1,7 @@
 <template>
   <v-app>
     <v-app-bar color="primary" prominent>
+      <img src="@/assets/stagnant-illusion-no-bg.png" alt="logo" style="height: 50px; margin-right: 12px;">
       <v-app-bar-title>静滞虚幻</v-app-bar-title>
       <v-spacer></v-spacer>
       <v-btn
@@ -11,9 +12,6 @@
       ></v-btn>
     </v-app-bar>
     <v-main>
-      <div class="v-bg position-absolute top-0 right-0 left-0 bottom-0">
-        <div aria-hidden="true" class="overflow-hidden opacity-20 w-100 h-100" />
-      </div>
       <v-container class="py-8">
         <v-card max-width="800" class="mx-auto elevation-2" style="background-color: rgba(255, 255, 255, 0.7);">
           <v-card-text>
@@ -590,19 +588,5 @@ function saveImage() {
 </script>
 
 <style scoped>
-.v-bg {
-  filter: blur(56px);
-  pointer-events: none;
-}
-
-.v-bg > div {
-  background: linear-gradient(
-    to bottom right,
-    rgb(var(--v-theme-primary, 0 0 0)),
-    rgb(var(--v-theme-error, 0 0 0))
-  );
-  z-index: -10;
-  clip-path: polygon(20% 50%, 27% 66%, 41% 66%, 50% 50%, 41% 34%, 27% 34%, 20% 50%, 55% 50%, 62% 66%, 76% 66%, 85% 50%, 76% 34%, 62% 34%, 55% 50%, 30% 50%, 37% 66%, 51% 66%, 60% 50%, 51% 34%, 37% 34%, 30% 50%);
-}
 </style>
 
