@@ -1,7 +1,7 @@
 <template>
   <v-app>
     <v-app-bar color="grey-darken-3" prominent>
-      <img src="@/assets/stagnant-illusion-no-bg.png" alt="logo" style="height: 50px; margin-right: 12px;">
+      <img src="@/assets/stagnant-illusion-no-bg.png" style="height: 50px; margin-left: 16px;">
       <v-app-bar-title>静滞虚幻</v-app-bar-title>
       <v-spacer></v-spacer>
       <v-btn
