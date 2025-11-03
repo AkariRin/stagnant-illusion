@@ -56,32 +56,29 @@ function base64ToBuffer(base64String: string): Uint8Array {
  * 图像处理引擎 - 使用 jimp 进行像素级操作
  */
 class ImageProcessor {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private baseImage: any = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private overlayImage: any = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private coverImage: any = null;
+  private baseImage: Awaited<ReturnType<typeof Jimp.read>> | null = null;
+  private overlayImage: Awaited<ReturnType<typeof Jimp.read>> | null = null;
+  private coverImage: Awaited<ReturnType<typeof Jimp.read>> | null = null;
 
   /**
    * 加载基础图像（底图）
    */
   async setBaseImage(imageBuffer: Uint8Array): Promise<void> {
-    this.baseImage = await Jimp.read(imageBuffer.buffer as ArrayBuffer);
+    this.baseImage = await Jimp.read(Buffer.from(imageBuffer));
   }
 
   /**
    * 加载覆盖层图像
    */
   async setOverlayImage(imageBuffer: Uint8Array): Promise<void> {
-    this.overlayImage = await Jimp.read(imageBuffer.buffer as ArrayBuffer);
+    this.overlayImage = await Jimp.read(Buffer.from(imageBuffer));
   }
 
   /**
    * 加载封面图像（黄色源石）
    */
   async setCoverImage(imageBuffer: Uint8Array): Promise<void> {
-    this.coverImage = await Jimp.read(imageBuffer.buffer as ArrayBuffer);
+    this.coverImage = await Jimp.read(Buffer.from(imageBuffer));
   }
 
   /**
@@ -100,8 +97,8 @@ class ImageProcessor {
 
     // 应用亮度调整
     if (options.brightness !== 100) {
-      const brightnessFactor = options.brightness / 100;
-      resultImage.brightness(brightnessFactor - 1);
+      const brightnessFactor = (options.brightness / 100) - 1;
+      resultImage.brightness(brightnessFactor);
     }
 
     // 确定要使用的覆盖图像
@@ -118,13 +115,13 @@ class ImageProcessor {
     }
 
     // 克隆覆盖图像用于叠加
-    let compositeImage = overlayToUse.clone();
+    const compositeImage = overlayToUse.clone();
 
     // 计算缩放后的尺寸
-    const baseWidth = Math.trunc(resultImage.bitmap.width);
-    const baseHeight = Math.trunc(resultImage.bitmap.height);
-    const overlayWidth = Math.trunc(compositeImage.bitmap.width);
-    const overlayHeight = Math.trunc(compositeImage.bitmap.height);
+    const baseWidth = resultImage.bitmap.width;
+    const baseHeight = resultImage.bitmap.height;
+    const overlayWidth = compositeImage.bitmap.width;
+    const overlayHeight = compositeImage.bitmap.height;
 
     // 验证所有尺寸都是有效的正整数
     if (!Number.isInteger(baseWidth) || !Number.isInteger(baseHeight) || baseWidth <= 0 || baseHeight <= 0) {
@@ -143,35 +140,25 @@ class ImageProcessor {
       throw new Error(`Invalid scaled dimensions: width=${scaledWidth}, height=${scaledHeight}. Dimensions must be positive integers.`);
     }
 
-    // 缩放覆盖图像
-    const finalScaledWidth = scaledWidth >>> 0;  // 使用位运算强制转换为无符号整数
-    const finalScaledHeight = scaledHeight >>> 0;
-
-    compositeImage = compositeImage.resize({
-      w: finalScaledWidth,
-      h: finalScaledHeight,
-    });
+    // 缩放覆盖图像 - 使用 Jimp v1.6.0 的 resize 方法
+    compositeImage.resize({ w: scaledWidth, h: scaledHeight });
 
     // 计算位置（pos-x 和 pos-y 范围是 [-1, 1]，转换为实际像素位置）
     const posXRaw = ((options['pos-x'] + 1) / 2) * baseWidth - scaledWidth / 2;
     const posYRaw = ((options['pos-y'] + 1) / 2) * baseHeight - scaledHeight / 2;
 
     // 强制转换为整数
-    const posX = Math.round(posXRaw);
-    const posY = Math.round(posYRaw);
+    const finalPosX = Math.round(posXRaw);
+    const finalPosY = Math.round(posYRaw);
 
     // 详细的坐标验证信息
-    if (!Number.isInteger(posX) || !Number.isInteger(posY)) {
+    if (!Number.isInteger(finalPosX) || !Number.isInteger(finalPosY)) {
       throw new Error(
-        `Invalid position coordinates: x=${posX} (raw: ${posXRaw}), y=${posY} (raw: ${posYRaw}). ` +
+        `Invalid position coordinates: x=${finalPosX} (raw: ${posXRaw}), y=${finalPosY} (raw: ${posYRaw}). ` +
         `Base dimensions: ${baseWidth}x${baseHeight}, Scaled dimensions: ${scaledWidth}x${scaledHeight}, ` +
         `Options: pos-x=${options['pos-x']}, pos-y=${options['pos-y']}`
       );
     }
-
-    // 最后一次类型检查和转换 - 直接使用原始整数值
-    const finalPosX: number = posX;
-    const finalPosY: number = posY;
 
     // 验证类型和范围
     if (!Number.isFinite(finalPosX) || !Number.isFinite(finalPosY)) {
@@ -182,8 +169,7 @@ class ImageProcessor {
 
     // 应用透明度处理 - 通过调整透明度通道
     if (overlayOpacity < 1) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (compositeImage as any).opacity(overlayOpacity);
+      compositeImage.opacity(overlayOpacity);
     }
 
     // 将覆盖图像合成到基础图像上
@@ -196,11 +182,9 @@ class ImageProcessor {
     console.log(`[Composite] Overlay size: ${compositeImage.bitmap.width}x${compositeImage.bitmap.height}`);
 
     try {
-      // 使用手动像素操作进行合成，避免 blit/composite API 问题
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const baseData = (resultImage as any).bitmap.data;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const overlayData = (compositeImage as any).bitmap.data;
+      // 使用手动像素操作进行合成
+      const baseData = resultImage.bitmap.data;
+      const overlayData = compositeImage.bitmap.data;
 
       const baseWidth = resultImage.bitmap.width;
       const baseHeight = resultImage.bitmap.height;
@@ -257,45 +241,15 @@ class ImageProcessor {
 
     // 将结果转换为 PNG Buffer
     try {
-      // 尝试多种方式导出 PNG
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const resultAny = resultImage as any;
-
-      let pngBuffer: Uint8Array | Buffer;
-
-      // 方式 1：尝试使用 png() 和 toBuffer()
-      if (typeof resultAny.png === 'function') {
-        const pngPlugin = resultAny.png();
-        if (typeof pngPlugin.toBuffer === 'function') {
-          pngBuffer = await pngPlugin.toBuffer();
-        } else if (typeof pngPlugin.then === 'function') {
-          // 如果 png() 返回 Promise
-          pngBuffer = await pngPlugin;
-        } else {
-          throw new Error('Unable to convert PNG plugin to buffer');
-        }
-      }
-      // 方式 2：尝试使用 buffer() 方法
-      else if (typeof resultAny.buffer === 'function') {
-        pngBuffer = await resultAny.buffer('image/png');
-      }
-      // 方式 3：尝试使用 toBuffer() 方法
-      else if (typeof resultAny.toBuffer === 'function') {
-        pngBuffer = await resultAny.toBuffer();
-      }
-      else {
-        throw new Error(`No export method found. Available methods: ${Object.keys(resultAny).filter(k => typeof resultAny[k] === 'function').slice(0, 10).join(', ')}`);
-      }
+      // 使用 Jimp 的 getBuffer 方法导出 PNG
+      const pngBuffer = await resultImage.getBuffer('image/png');
 
       // 确保返回 Uint8Array 格式以兼容 Workers 环境
       if (pngBuffer instanceof Uint8Array) {
         return pngBuffer;
       }
-      // 尝试作为通用的 ArrayBuffer 或 ArrayLike 对象处理
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if ((pngBuffer as any).buffer instanceof ArrayBuffer) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return new Uint8Array((pngBuffer as any).buffer);
+      if (Buffer.isBuffer(pngBuffer)) {
+        return new Uint8Array(pngBuffer);
       }
       return new Uint8Array(pngBuffer as ArrayBufferLike);
     } catch (pngError: unknown) {
