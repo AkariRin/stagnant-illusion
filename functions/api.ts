@@ -93,7 +93,7 @@ class ImageProcessor {
     }
 
     // 克隆基础图像，避免修改原始数据
-    const resultImage = this.baseImage.clone();
+    let resultImage = this.baseImage.clone();
 
     // 应用亮度调整
     if (options.brightness !== 100) {
@@ -101,25 +101,49 @@ class ImageProcessor {
       resultImage.brightness(brightnessFactor);
     }
 
-    // 确定要使用的覆盖图像
-    let overlayToUse = this.overlayImage;
-    let overlayOpacity = options.opacity;
+    // 第一步：应用 stagnant illusion 覆盖层
+    resultImage = await this.applyOverlay(resultImage, this.overlayImage, options.opacity, options['pos-x'], options['pos-y'], options.scale);
 
+    // 第二步：如果 yellow 为 true，再应用 yellow 覆盖层
     if (options.yellow && this.coverImage) {
-      overlayToUse = this.coverImage;
-      overlayOpacity = options.yellowOpacity;
+      resultImage = await this.applyOverlay(resultImage, this.coverImage, options.yellowOpacity, options['pos-x'], options['pos-y'], options.scale);
     }
 
-    if (!overlayToUse) {
-      throw new Error('Overlay image not loaded');
-    }
+    // 将结果转换为 PNG Buffer
+    try {
+      // 使用 Jimp 的 getBuffer 方法导出 PNG
+      const pngBuffer = await resultImage.getBuffer('image/png');
 
+      // 确保返回 Uint8Array 格式以兼容 Workers 环境
+      if (pngBuffer instanceof Uint8Array) {
+        return pngBuffer;
+      }
+      // 将 ArrayBuffer 或其他格式转换为 Uint8Array
+      // 如果是 ArrayBuffer，直接创建 Uint8Array
+      return new Uint8Array(pngBuffer as ArrayBufferLike);
+    } catch (pngError: unknown) {
+      const errorMsg = pngError instanceof Error ? pngError.message : String(pngError);
+      throw new Error(`Failed to encode PNG: ${errorMsg}`);
+    }
+  }
+
+  /**
+   * 应用单个覆盖层到图像上
+   */
+  private async applyOverlay(
+    baseImage: Awaited<ReturnType<typeof Jimp.read>>,
+    overlayImage: Awaited<ReturnType<typeof Jimp.read>>,
+    opacity: number,
+    posX: number,
+    posY: number,
+    scale: number
+  ): Promise<Awaited<ReturnType<typeof Jimp.read>>> {
     // 克隆覆盖图像用于叠加
-    const compositeImage = overlayToUse.clone();
+    const compositeImage = overlayImage.clone();
 
     // 计算缩放后的尺寸
-    const baseWidth = resultImage.bitmap.width;
-    const baseHeight = resultImage.bitmap.height;
+    const baseWidth = baseImage.bitmap.width;
+    const baseHeight = baseImage.bitmap.height;
     const overlayWidth = compositeImage.bitmap.width;
     const overlayHeight = compositeImage.bitmap.height;
 
@@ -132,7 +156,7 @@ class ImageProcessor {
       throw new Error(`Invalid overlay image dimensions: width=${overlayWidth}, height=${overlayHeight}. Dimensions must be positive integers.`);
     }
 
-    const scaledWidth = Math.round(baseWidth * options.scale);
+    const scaledWidth = Math.round(baseWidth * scale);
     const scaledHeight = Math.round((overlayHeight / overlayWidth) * scaledWidth);
 
     // 验证缩放尺寸
@@ -144,8 +168,8 @@ class ImageProcessor {
     compositeImage.resize({ w: scaledWidth, h: scaledHeight });
 
     // 计算位置（pos-x 和 pos-y 范围是 [-1, 1]，转换为实际像素位置）
-    const posXRaw = ((options['pos-x'] + 1) / 2) * baseWidth - scaledWidth / 2;
-    const posYRaw = ((options['pos-y'] + 1) / 2) * baseHeight - scaledHeight / 2;
+    const posXRaw = ((posX + 1) / 2) * baseWidth - scaledWidth / 2;
+    const posYRaw = ((posY + 1) / 2) * baseHeight - scaledHeight / 2;
 
     // 强制转换为整数
     const finalPosX = Math.round(posXRaw);
@@ -156,7 +180,7 @@ class ImageProcessor {
       throw new Error(
         `Invalid position coordinates: x=${finalPosX} (raw: ${posXRaw}), y=${finalPosY} (raw: ${posYRaw}). ` +
         `Base dimensions: ${baseWidth}x${baseHeight}, Scaled dimensions: ${scaledWidth}x${scaledHeight}, ` +
-        `Options: pos-x=${options['pos-x']}, pos-y=${options['pos-y']}`
+        `Options: pos-x=${posX}, pos-y=${posY}`
       );
     }
 
@@ -168,26 +192,26 @@ class ImageProcessor {
     }
 
     // 应用透明度处理 - 通过调整透明度通道
-    if (overlayOpacity < 1) {
-      compositeImage.opacity(overlayOpacity);
+    if (opacity < 1) {
+      compositeImage.opacity(opacity);
     }
 
     // 将覆盖图像合成到基础图像上
-    if (!resultImage || !compositeImage) {
+    if (!baseImage || !compositeImage) {
       throw new Error('Image objects are not properly initialized before composite');
     }
 
     console.log(`[Composite] Position: x=${finalPosX}, y=${finalPosY}`);
-    console.log(`[Composite] Base size: ${resultImage.bitmap.width}x${resultImage.bitmap.height}`);
+    console.log(`[Composite] Base size: ${baseImage.bitmap.width}x${baseImage.bitmap.height}`);
     console.log(`[Composite] Overlay size: ${compositeImage.bitmap.width}x${compositeImage.bitmap.height}`);
 
     try {
       // 使用手动像素操作进行合成
-      const baseData = resultImage.bitmap.data;
+      const baseData = baseImage.bitmap.data;
       const overlayData = compositeImage.bitmap.data;
 
-      const baseWidth = resultImage.bitmap.width;
-      const baseHeight = resultImage.bitmap.height;
+      const baseWidth = baseImage.bitmap.width;
+      const baseHeight = baseImage.bitmap.height;
       const overlayWidth = compositeImage.bitmap.width;
       const overlayHeight = compositeImage.bitmap.height;
 
@@ -239,22 +263,7 @@ class ImageProcessor {
       );
     }
 
-    // 将结果转换为 PNG Buffer
-    try {
-      // 使用 Jimp 的 getBuffer 方法导出 PNG
-      const pngBuffer = await resultImage.getBuffer('image/png');
-
-      // 确保返回 Uint8Array 格式以兼容 Workers 环境
-      if (pngBuffer instanceof Uint8Array) {
-        return pngBuffer;
-      }
-      // 将 ArrayBuffer 或其他格式转换为 Uint8Array
-      // 如果是 ArrayBuffer，直接创建 Uint8Array
-      return new Uint8Array(pngBuffer as ArrayBufferLike);
-    } catch (pngError: unknown) {
-      const errorMsg = pngError instanceof Error ? pngError.message : String(pngError);
-      throw new Error(`Failed to encode PNG: ${errorMsg}`);
-    }
+    return baseImage;
   }
 }
 
