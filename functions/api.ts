@@ -68,21 +68,21 @@ class ImageProcessor {
    * 加载基础图像（底图）
    */
   async setBaseImage(imageBuffer: Uint8Array): Promise<void> {
-    this.baseImage = await Jimp.read(imageBuffer);
+    this.baseImage = await Jimp.read(imageBuffer.buffer as ArrayBuffer);
   }
 
   /**
    * 加载覆盖层图像
    */
   async setOverlayImage(imageBuffer: Uint8Array): Promise<void> {
-    this.overlayImage = await Jimp.read(imageBuffer);
+    this.overlayImage = await Jimp.read(imageBuffer.buffer as ArrayBuffer);
   }
 
   /**
    * 加载封面图像（黄色源石）
    */
   async setCoverImage(imageBuffer: Uint8Array): Promise<void> {
-    this.coverImage = await Jimp.read(imageBuffer);
+    this.coverImage = await Jimp.read(imageBuffer.buffer as ArrayBuffer);
   }
 
   /**
