@@ -1,5 +1,3 @@
-export default {
-  async fetch() {
-    return new Response('Hello World');
-  },
+export const onRequest: PagesFunction = async (context) => {
+  return new Response('Hello World');
 };
