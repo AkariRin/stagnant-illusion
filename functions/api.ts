@@ -1,3 +1,5 @@
+import { STAGNANT_ILLUSION_BASE64, YELLOW_BASE64 } from './base64';
+
 /**
  * 图像合成 API 请求体接口
  */
@@ -32,32 +34,24 @@ function base64ToUint8Array(base64String: string): Uint8Array {
 }
 
 /**
- * 从 assets 目录加载图片文件
- * 在 Cloudflare Pages 中，我们通过相对 URL 来加载资源
+ * 加载资源图片（使用 base64 编码）
  */
-async function loadAssetImage(filename: string): Promise<Uint8Array> {
-  try {
-    // 构造资源 URL - 在 Cloudflare Pages 中，assets 通过相对路径访问
-    // 由于 Pages 函数在 /api 路径下，我们需要相对路径回到根目录
-    let assetPath: string;
+function loadAssetImage(filename: string): Uint8Array {
+  let base64Data: string;
 
-    if (filename === 'stagnant-illusion.png') {
-      assetPath = '../assets/stagnant-illusion.png';
-    } else if (filename === 'yellow.png') {
-      assetPath = '../assets/yellow.png';
-    } else {
-      throw new Error(`Unsupported asset file: ${filename}`);
-    }
-
-    const response = await fetch(assetPath);
-    if (!response.ok) {
-      throw new Error(`Failed to load asset: ${filename} (${response.status})`);
-    }
-    const buffer = await response.arrayBuffer();
-    return new Uint8Array(buffer);
-  } catch (error) {
-    throw new Error(`Cannot load asset image ${filename}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  if (filename === 'stagnant-illusion.png') {
+    base64Data = STAGNANT_ILLUSION_BASE64;
+  } else if (filename === 'yellow.png') {
+    base64Data = YELLOW_BASE64;
+  } else {
+    throw new Error(`Unsupported asset file: ${filename}`);
   }
+
+  if (!base64Data) {
+    throw new Error(`Base64 data for ${filename} is not configured`);
+  }
+
+  return base64ToUint8Array(base64Data);
 }
 
 /**
@@ -298,14 +292,14 @@ export const onRequest: PagesFunction = async (context: PagesContext): Promise<R
       // 加载图像
       const baseImageBuffer = base64ToUint8Array(requestData.image);
       // 从 assets 目录加载 overlay 图像 (stagnant-illusion.png)
-      const overlayImageBuffer = await loadAssetImage('stagnant-illusion.png');
+      const overlayImageBuffer = loadAssetImage('stagnant-illusion.png');
 
       await processor.setBaseImage(baseImageBuffer);
       await processor.setOverlayImage(overlayImageBuffer);
 
       // 如果需要 cover，从 assets 目录加载 (yellow.png)
       if (requestData.useCover) {
-        const coverImageBuffer = await loadAssetImage('yellow.png');
+        const coverImageBuffer = loadAssetImage('yellow.png');
         await processor.setCoverImage(coverImageBuffer);
       }
 
