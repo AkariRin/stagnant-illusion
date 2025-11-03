@@ -64,21 +64,21 @@ class ImageProcessor {
    * 加载基础图像（底图）
    */
   async setBaseImage(imageBuffer: Uint8Array): Promise<void> {
-    this.baseImage = await Jimp.read(Buffer.from(imageBuffer));
+    this.baseImage = await Jimp.read(imageBuffer.buffer as ArrayBuffer);
   }
 
   /**
    * 加载覆盖层图像
    */
   async setOverlayImage(imageBuffer: Uint8Array): Promise<void> {
-    this.overlayImage = await Jimp.read(Buffer.from(imageBuffer));
+    this.overlayImage = await Jimp.read(imageBuffer.buffer as ArrayBuffer);
   }
 
   /**
    * 加载封面图像（黄色源石）
    */
   async setCoverImage(imageBuffer: Uint8Array): Promise<void> {
-    this.coverImage = await Jimp.read(Buffer.from(imageBuffer));
+    this.coverImage = await Jimp.read(imageBuffer.buffer as ArrayBuffer);
   }
 
   /**
@@ -248,9 +248,8 @@ class ImageProcessor {
       if (pngBuffer instanceof Uint8Array) {
         return pngBuffer;
       }
-      if (Buffer.isBuffer(pngBuffer)) {
-        return new Uint8Array(pngBuffer);
-      }
+      // 将 ArrayBuffer 或其他格式转换为 Uint8Array
+      // 如果是 ArrayBuffer，直接创建 Uint8Array
       return new Uint8Array(pngBuffer as ArrayBufferLike);
     } catch (pngError: unknown) {
       const errorMsg = pngError instanceof Error ? pngError.message : String(pngError);
