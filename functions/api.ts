@@ -2,10 +2,24 @@ import { Jimp } from 'jimp';
 import { STAGNANT_ILLUSION_BASE64, YELLOW_BASE64 } from './base64';
 
 /**
- * 图像合成 API 请求体接口
+ * 图像合成 API 请求参数接口（GET 参数）
  */
 export interface ComposeImageRequest {
-  // 图像合成选项
+  // 图像合成选项（除 image 外均为可选，有默认值）
+  'pos-x'?: number;
+  'pos-y'?: number;
+  scale?: number;
+  opacity?: number;
+  brightness?: number;
+  yellow?: boolean;
+  yellowOpacity?: number;
+  image: string; // 必需参数
+}
+
+/**
+ * 图像合成选项接口（与 ComposeImageRequest 保持一致）
+ */
+export type CompositionOptions = {
   'pos-x': number;
   'pos-y': number;
   scale: number;
@@ -13,13 +27,7 @@ export interface ComposeImageRequest {
   brightness: number;
   yellow: boolean;
   yellowOpacity: number;
-  image: string;
-}
-
-/**
- * 图像合成选项接口（与 ComposeImageRequest 保持一致）
- */
-export type CompositionOptions = Omit<ComposeImageRequest, 'image'>;
+};
 
 function base64ToBuffer(base64String: string): Uint8Array {
   if (!base64String || typeof base64String !== 'string') {
@@ -299,20 +307,20 @@ function validateCompositionOptions(options: unknown): options is CompositionOpt
 
 
 /**
- * 图像合成 API 端点
+ * 图像合成 API 端点（使用 GET 方法）
  * 注意：这是导出给 Cloudflare Pages 作为 API 处理器使用的
  */
-// @ts-expect-error - onRequest is used by Cloudflare Pages runtime
-export const onRequest: PagesFunction = async (context: PagesContext): Promise<Response> => {
-  // 仅接受 POST 请求
-  if (context.request.method !== 'POST') {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const onRequest = async (context: any): Promise<Response> => {
+  // 仅接受 GET 请求
+  if (context.request.method !== 'GET') {
     return new Response(
       JSON.stringify({
         success: false,
         message: 'Method not allowed',
         error: {
           code: 'METHOD_NOT_ALLOWED',
-          message: 'Only POST requests are supported',
+          message: 'Only GET requests are supported',
         },
       }),
       {
@@ -326,41 +334,20 @@ export const onRequest: PagesFunction = async (context: PagesContext): Promise<R
   }
 
   try {
-    // 解析请求体
-    const contentType = context.request.headers.get('content-type') || '';
+    // 解析 URL 查询参数
+    const url = new URL(context.request.url);
+    const params = url.searchParams;
 
-    if (!contentType.includes('application/json')) {
+    // 验证必需的 image 参数
+    const image = params.get('image');
+    if (!image) {
       return new Response(
         JSON.stringify({
           success: false,
-          message: 'Invalid content type',
-          error: {
-            code: 'INVALID_CONTENT_TYPE',
-            message: 'Content-Type must be application/json',
-          },
-        }),
-        {
-          status: 400,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-          },
-        }
-      );
-    }
-
-    const requestData = await context.request.json() as ComposeImageRequest;
-
-    // 验证必需字段
-    if (!requestData.image) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          message: 'Missing required fields',
+          message: 'Missing required parameter',
           error: {
             code: 'INVALID_REQUEST',
-            message:
-              'Request must include: image',
+            message: 'Request must include: image',
           },
         }),
         {
@@ -373,8 +360,31 @@ export const onRequest: PagesFunction = async (context: PagesContext): Promise<R
       );
     }
 
+    // 解析可选参数，应用默认值
+    const requestData: ComposeImageRequest = {
+      image,
+      'pos-x': params.has('pos-x') ? parseFloat(params.get('pos-x')!) : 0,
+      'pos-y': params.has('pos-y') ? parseFloat(params.get('pos-y')!) : 0,
+      scale: params.has('scale') ? parseFloat(params.get('scale')!) : 1,
+      opacity: params.has('opacity') ? parseFloat(params.get('opacity')!) : 0.8,
+      brightness: params.has('brightness') ? parseFloat(params.get('brightness')!) : 100,
+      yellow: params.has('yellow') ? params.get('yellow') === 'true' : false,
+      yellowOpacity: params.has('yellowOpacity') ? parseFloat(params.get('yellowOpacity')!) : 1,
+    };
+
+    // 构造选项对象用于验证
+    const options: CompositionOptions = {
+      'pos-x': requestData['pos-x']!,
+      'pos-y': requestData['pos-y']!,
+      scale: requestData.scale!,
+      opacity: requestData.opacity!,
+      brightness: requestData.brightness!,
+      yellow: requestData.yellow!,
+      yellowOpacity: requestData.yellowOpacity!,
+    };
+
     // 验证选项参数
-    if (!validateCompositionOptions(requestData)) {
+    if (!validateCompositionOptions(options)) {
       return new Response(
         JSON.stringify({
           success: false,
@@ -414,7 +424,7 @@ export const onRequest: PagesFunction = async (context: PagesContext): Promise<R
       }
 
       // 执行图像合成
-      const resultBuffer = await processor.compose(requestData);
+      const resultBuffer = await processor.compose(options);
       const processingTime = Date.now() - startTime;
 
       return new Response(resultBuffer.buffer as ArrayBuffer, {
