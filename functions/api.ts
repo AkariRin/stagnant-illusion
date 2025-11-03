@@ -33,14 +33,22 @@ function base64ToUint8Array(base64String: string): Uint8Array {
 
 /**
  * 从 assets 目录加载图片文件
- * 在 Cloudflare Pages 中，编译后的资源在 /assets 路径下
+ * 在 Cloudflare Pages 中，我们通过相对 URL 来加载资源
  */
 async function loadAssetImage(filename: string): Promise<Uint8Array> {
-  // 在 Cloudflare Pages 中，assets 在 /assets 路径下
-  // 考虑到编译后的 hash 化文件名，我们需要通过动态导入或直接加载
-  const assetPath = `/assets/${filename}`;
-
   try {
+    // 构造资源 URL - 在 Cloudflare Pages 中，assets 通过相对路径访问
+    // 由于 Pages 函数在 /api 路径下，我们需要相对路径回到根目录
+    let assetPath: string;
+
+    if (filename === 'stagnant-illusion.png') {
+      assetPath = '../assets/stagnant-illusion.png';
+    } else if (filename === 'yellow.png') {
+      assetPath = '../assets/yellow.png';
+    } else {
+      throw new Error(`Unsupported asset file: ${filename}`);
+    }
+
     const response = await fetch(assetPath);
     if (!response.ok) {
       throw new Error(`Failed to load asset: ${filename} (${response.status})`);
