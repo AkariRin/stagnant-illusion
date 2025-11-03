@@ -1,3 +1,4 @@
+import { Jimp } from 'jimp';
 import { STAGNANT_ILLUSION_BASE64, YELLOW_BASE64 } from './base64';
 
 /**
@@ -20,23 +21,16 @@ export interface ComposeImageRequest {
  */
 export type CompositionOptions = Omit<ComposeImageRequest, 'image'>;
 
-function base64ToUint8Array(base64String: string): Uint8Array {
+function base64ToBuffer(base64String: string): Buffer {
   // 移除 data: URI scheme 和 mime type
   const cleanBase64 = base64String.split(',')[1] || base64String;
-
-  // 使用标准的 base64 解码方式
-  const binaryString = globalThis.atob(cleanBase64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes;
+  return Buffer.from(cleanBase64, 'base64');
 }
 
 /**
  * 加载资源图片（使用 base64 编码）
  */
-function loadAssetImage(filename: string): Uint8Array {
+function loadAssetImage(filename: string): Buffer {
   let base64Data: string;
 
   if (filename === 'stagnant-illusion.png') {
@@ -51,109 +45,107 @@ function loadAssetImage(filename: string): Uint8Array {
     throw new Error(`Base64 data for ${filename} is not configured`);
   }
 
-  return base64ToUint8Array(base64Data);
+  return base64ToBuffer(base64Data);
 }
 
 /**
- * 简单的 PNG 图像信息解析器
- */
-function parsePNGHeader(data: Uint8Array): { width: number; height: number } {
-  // PNG 文件头: 89 50 4E 47 0D 0A 1A 0A
-  // IHDR 块在 8 字节之后
-  // 宽度在字节 16-19，高度在字节 20-23
-  if (data.length < 24) {
-    throw new Error('Invalid PNG data');
-  }
-
-  const width =
-    (data[16] << 24) | (data[17] << 16) | (data[18] << 8) | data[19];
-  const height =
-    (data[20] << 24) | (data[21] << 16) | (data[22] << 8) | data[23];
-
-  return { width, height };
-}
-
-/**
- * 图像处理引擎 - 使用二进制像素操作（Cloudflare Workers 兼容）
- * 这是一个简化的实现，基于 PNG 像素操作
+ * 图像处理引擎 - 使用 jimp 进行像素级操作
  */
 class ImageProcessor {
-  private baseImageData: Uint8Array | null = null;
-  private overlayImageData: Uint8Array | null = null;
-  private coverImageData: Uint8Array | null = null;
-  private baseImageInfo: { width: number; height: number } | null = null;
-  private overlayImageInfo: { width: number; height: number } | null = null;
-  private coverImageInfo: { width: number; height: number } | null = null;
-  private baseScale: number = 1;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private baseImage: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private overlayImage: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private coverImage: any = null;
 
   /**
-   * 设置基础图像（底图）
+   * 加载基础图像（底图）
    */
-  async setBaseImage(imageBuffer: Uint8Array): Promise<void> {
-    this.baseImageData = imageBuffer;
-    this.baseImageInfo = parsePNGHeader(imageBuffer);
+  async setBaseImage(imageBuffer: Buffer): Promise<void> {
+    this.baseImage = await Jimp.read(imageBuffer);
   }
 
   /**
-   * 设置覆盖层图像
+   * 加载覆盖层图像
    */
-  async setOverlayImage(imageBuffer: Uint8Array): Promise<void> {
-    this.overlayImageData = imageBuffer;
-    this.overlayImageInfo = parsePNGHeader(imageBuffer);
-    this.calculateBaseScale();
+  async setOverlayImage(imageBuffer: Buffer): Promise<void> {
+    this.overlayImage = await Jimp.read(imageBuffer);
   }
 
   /**
-   * 设置封面图像（黄色源石）
+   * 加载封面图像（黄色源石）
    */
-  async setCoverImage(imageBuffer: Uint8Array): Promise<void> {
-    this.coverImageData = imageBuffer;
-    this.coverImageInfo = parsePNGHeader(imageBuffer);
+  async setCoverImage(imageBuffer: Buffer): Promise<void> {
+    this.coverImage = await Jimp.read(imageBuffer);
   }
 
   /**
-   * 计算基础缩放比例
+   * 图像合成 - 使用 jimp 实现完整的像素级合成
    */
-  private calculateBaseScale(): void {
-    if (!this.baseImageInfo || !this.overlayImageInfo) {
-      this.baseScale = 1;
-      return;
-    }
-    const widthRatio = this.baseImageInfo.width / this.overlayImageInfo.width;
-    const heightRatio = this.baseImageInfo.height / this.overlayImageInfo.height;
-    this.baseScale = Math.min(widthRatio, heightRatio) * 1.5;
-  }
-
-  /**
-   * 简化的图像合成 - 直接返回基础图像加上应用亮度调整
-   * 完整的像素级合成在 Cloudflare Workers 中计算成本过高
-   * 在实际应用中，建议使用 Cloudflare Image API 或转移到本地处理
-   */
-  async compose(options: CompositionOptions): Promise<Uint8Array> {
-    if (!this.baseImageData) {
+  async compose(options: CompositionOptions): Promise<Buffer> {
+    if (!this.baseImage) {
       throw new Error('Base image not loaded');
     }
-    if (!this.overlayImageData) {
+    if (!this.overlayImage) {
       throw new Error('Overlay image not loaded');
     }
 
-    // 由于 Cloudflare Workers 的限制，我们采用以下策略：
-    // 1. 基础图像可以直接返回
-    // 2. 亮度调整需要在客户端进行，或使用图像处理服务
-    // 3. 叠层合成也建议在客户端进行
+    // 克隆基础图像，避免修改原始数据
+    const resultImage = this.baseImage.clone();
 
-    // 如果需要应用亮度调整，这里返回基础图像
-    // 实际的合成效果将需要在客户端或专门的图像处理服务中执行
-    let result = this.baseImageData;
-
-    // 如果使用封面且有数据，可以尝试简单的合并
-    if (options.useCover && this.coverImageData) {
-      // 在 Workers 中，我们只能返回其中一个图像
-      // 完整的混合需要像素级操作，成本太高
-      result = this.coverImageData;
+    // 应用亮度调整
+    if (options.brightness !== 100) {
+      const brightnessFactor = options.brightness / 100;
+      resultImage.brightness(brightnessFactor - 1);
     }
 
-    return result;
+    // 确定要使用的覆盖图像
+    let overlayToUse = this.overlayImage;
+    let overlayOpacity = options.opacity;
+
+    if (options.useCover && this.coverImage) {
+      overlayToUse = this.coverImage;
+      overlayOpacity = options.coverOpacity;
+    }
+
+    if (!overlayToUse) {
+      throw new Error('Overlay image not loaded');
+    }
+
+    // 克隆覆盖图像用于叠加
+    let compositeImage = overlayToUse.clone();
+
+    // 计算缩放后的尺寸
+    const baseWidth = resultImage.bitmap.width;
+    const baseHeight = resultImage.bitmap.height;
+    const overlayWidth = compositeImage.bitmap.width;
+    const overlayHeight = compositeImage.bitmap.height;
+
+    const scaledWidth = Math.round(baseWidth * options.scale);
+    const scaledHeight = Math.round((overlayHeight / overlayWidth) * scaledWidth);
+
+    // 缩放覆盖图像
+    compositeImage = compositeImage.resize({
+      w: scaledWidth,
+      h: scaledHeight,
+    });
+
+    // 计算位置（pos-x 和 pos-y 范围是 [-1, 1]，转换为实际像素位置）
+    const posX = Math.round(((options['pos-x'] + 1) / 2) * baseWidth - scaledWidth / 2);
+    const posY = Math.round(((options['pos-y'] + 1) / 2) * baseHeight - scaledHeight / 2);
+
+    // 应用透明度
+    compositeImage.opacity(overlayOpacity);
+
+    // 将覆盖图像合成到基础图像上
+    resultImage.composite(compositeImage, {
+      x: posX,
+      y: posY,
+    });
+
+    // 将结果转换为 PNG Buffer
+    return await resultImage.png().toBuffer();
   }
 }
 
@@ -290,7 +282,7 @@ export const onRequest: PagesFunction = async (context: PagesContext): Promise<R
 
     try {
       // 加载图像
-      const baseImageBuffer = base64ToUint8Array(requestData.image);
+      const baseImageBuffer = base64ToBuffer(requestData.image);
       // 从 assets 目录加载 overlay 图像 (stagnant-illusion.png)
       const overlayImageBuffer = loadAssetImage('stagnant-illusion.png');
 
@@ -304,22 +296,10 @@ export const onRequest: PagesFunction = async (context: PagesContext): Promise<R
       }
 
       // 执行图像合成
-      const resultUint8Array = await processor.compose(requestData);
+      const resultBuffer = await processor.compose(requestData);
       const processingTime = Date.now() - startTime;
 
-      // 将 Uint8Array 转换为 ArrayBuffer（仅限标准 ArrayBuffer，不含 SharedArrayBuffer）
-      let arrayBuffer: ArrayBuffer;
-      if (resultUint8Array.buffer instanceof ArrayBuffer && !(resultUint8Array.buffer instanceof SharedArrayBuffer)) {
-        arrayBuffer = resultUint8Array.buffer.slice(
-          resultUint8Array.byteOffset,
-          resultUint8Array.byteOffset + resultUint8Array.byteLength
-        ) as ArrayBuffer;
-      } else {
-        // 如果不是普通 ArrayBuffer，创建一个新的
-        arrayBuffer = new Uint8Array(resultUint8Array).buffer as ArrayBuffer;
-      }
-
-      return new Response(arrayBuffer, {
+      return new Response(resultBuffer.buffer.slice(resultBuffer.byteOffset, resultBuffer.byteOffset + resultBuffer.byteLength) as ArrayBuffer, {
         status: 200,
         headers: {
           'Content-Type': 'image/png',
