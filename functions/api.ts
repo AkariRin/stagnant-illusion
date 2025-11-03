@@ -10,16 +10,13 @@ export interface ComposeImageRequest {
   brightness: number;
   useCover: boolean;
   coverOpacity: number;
-  // 图像数据
   image: string;
-  overlayImage: string;
-  coverImage?: string;
 }
 
 /**
  * 图像合成选项接口（与 ComposeImageRequest 保持一致）
  */
-export type CompositionOptions = Omit<ComposeImageRequest, 'image' | 'overlayImage' | 'coverImage'>;
+export type CompositionOptions = Omit<ComposeImageRequest, 'image'>;
 
 /**
  * 图像合成结果数据
@@ -89,6 +86,27 @@ function uint8ArrayToBase64(uint8Array: Uint8Array, mimeType: string = 'image/pn
     binaryString += String.fromCharCode(uint8Array[i]);
   }
   return `data:${mimeType};base64,${globalThis.btoa(binaryString)}`;
+}
+
+/**
+ * 从 assets 目录加载图片文件
+ * 在 Cloudflare Pages 中，编译后的资源在 /assets 路径下
+ */
+async function loadAssetImage(filename: string): Promise<Uint8Array> {
+  // 在 Cloudflare Pages 中，assets 在 /assets 路径下
+  // 考虑到编译后的 hash 化文件名，我们需要通过动态导入或直接加载
+  const assetPath = `/assets/${filename}`;
+
+  try {
+    const response = await fetch(assetPath);
+    if (!response.ok) {
+      throw new Error(`Failed to load asset: ${filename} (${response.status})`);
+    }
+    const buffer = await response.arrayBuffer();
+    return new Uint8Array(buffer);
+  } catch (error) {
+    throw new Error(`Cannot load asset image ${filename}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
 /**
@@ -279,7 +297,7 @@ export const onRequest: PagesFunction = async (context: PagesContext): Promise<R
     const requestData = await context.request.json() as ComposeImageRequest;
 
     // 验证必需字段
-    if (!requestData.image || !requestData.overlayImage) {
+    if (!requestData.image) {
       return new Response(
         JSON.stringify({
           success: false,
@@ -287,7 +305,7 @@ export const onRequest: PagesFunction = async (context: PagesContext): Promise<R
           error: {
             code: 'INVALID_REQUEST',
             message:
-              'Request must include: image and overlayImage',
+              'Request must include: image',
           },
         }),
         {
@@ -328,14 +346,15 @@ export const onRequest: PagesFunction = async (context: PagesContext): Promise<R
     try {
       // 加载图像
       const baseImageBuffer = base64ToUint8Array(requestData.image);
-      const overlayImageBuffer = base64ToUint8Array(requestData.overlayImage);
+      // 从 assets 目录加载 overlay 图像 (stagnant-illusion.png)
+      const overlayImageBuffer = await loadAssetImage('stagnant-illusion.png');
 
       await processor.setBaseImage(baseImageBuffer);
       await processor.setOverlayImage(overlayImageBuffer);
 
-      // 如果提供了封面图像，加载它
-      if (requestData.coverImage) {
-        const coverImageBuffer = base64ToUint8Array(requestData.coverImage);
+      // 如果需要 cover，从 assets 目录加载 (yellow.png)
+      if (requestData.useCover) {
+        const coverImageBuffer = await loadAssetImage('yellow.png');
         await processor.setCoverImage(coverImageBuffer);
       }
 
