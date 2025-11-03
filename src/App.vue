@@ -291,7 +291,7 @@ let imagesLoaded = false
 let baseImageFileName = ''
 
 /**
- * 加载覆盖层和封面图像
+ * 加载源石封印和黄色源石图像
  */
 async function loadAssets(prtsImageUrl: string, coverImageUrl: string): Promise<void> {
   overlayImg = new Image()
@@ -304,12 +304,12 @@ async function loadAssets(prtsImageUrl: string, coverImageUrl: string): Promise<
     new Promise<void>((resolve, reject) => {
       if (overlayImg) {
         overlayImg.onload = () => {
-          console.log('覆盖层图像已加载:', overlayImg?.width, overlayImg?.height)
+          console.log('源石封印已加载:', overlayImg?.width, overlayImg?.height)
           resolve()
         }
         overlayImg.onerror = (e) => {
-          console.error('覆盖层图像加载失败:', e)
-          reject(new Error('覆盖层图像加载失败'))
+          console.error('源石封印加载失败:', e)
+          reject(new Error('源石封印加载失败'))
         }
         overlayImg.src = prtsImageUrl
       }
@@ -317,12 +317,12 @@ async function loadAssets(prtsImageUrl: string, coverImageUrl: string): Promise<
     new Promise<void>((resolve, reject) => {
       if (coverImg) {
         coverImg.onload = () => {
-          console.log('封面图像已加载:', coverImg?.width, coverImg?.height)
+          console.log('黄色源石已加载:', coverImg?.width, coverImg?.height)
           resolve()
         }
         coverImg.onerror = (e) => {
-          console.error('封面图像加载失败:', e)
-          reject(new Error('封面图像加载失败'))
+          console.error('黄色源石加载失败:', e)
+          reject(new Error('黄色源石加载失败'))
         }
         coverImg.src = coverImageUrl
       }
@@ -410,12 +410,12 @@ function compose(options: CompositionOptions): void {
   }
 
   if (!overlayImg) {
-    console.log('无法合成: 未加载覆盖层图像')
+    console.log('无法合成: 未加载源石封印')
     return
   }
 
   if (!overlayImg.complete) {
-    console.log('无法合成: 覆盖层图像加载未完成')
+    console.log('无法合成: 源石封印加载未完成')
     return
   }
 
@@ -449,7 +449,7 @@ function compose(options: CompositionOptions): void {
   iCtx.fillStyle = 'rgba(0, 0, 0, 0.77)'
   iCtx.fillRect(0, 0, intermediateCanvas.width, intermediateCanvas.height)
 
-  // 计算覆盖层图像的位置和大小
+  // 计算源石封印的位置和大小
   const scaleFactor = baseScale * options.scale
   const posXValue = Math.floor(options.posX * canvasRef.value.width)
   const posYValue = Math.floor(options.posY * canvasRef.value.height)
@@ -469,7 +469,7 @@ function compose(options: CompositionOptions): void {
   ctx.globalAlpha = options.opacity
   ctx.drawImage(intermediateCanvas, 0, 0)
 
-  // 如果需要，绘制封面图像
+  // 如果需要，绘制黄色源石
   if (options.useCover && coverImg && coverImg.complete) {
     ctx.globalAlpha = options.coverOpacity
     ctx.drawImage(coverImg, 0, 0, canvasRef.value.width, canvasRef.value.height)
@@ -582,7 +582,7 @@ async function handleImageUpload(files: File | File[] | null) {
     composeImages()
   } catch (error) {
     console.error('加载底图失败:', error)
-   snackbarMessage.value = '图片加载失败，请重试'
+    snackbarMessage.value = '图片加载失败，请重试'
     showSnackbar.value = true
   } finally {
     loading.value = false

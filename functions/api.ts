@@ -11,8 +11,8 @@ export interface ComposeImageRequest {
   scale: number;
   opacity: number;
   brightness: number;
-  useCover: boolean;
-  coverOpacity: number;
+  yellow: boolean;
+  yellowOpacity: number;
   image: string;
 }
 
@@ -108,9 +108,9 @@ class ImageProcessor {
     let overlayToUse = this.overlayImage;
     let overlayOpacity = options.opacity;
 
-    if (options.useCover && this.coverImage) {
+    if (options.yellow && this.coverImage) {
       overlayToUse = this.coverImage;
-      overlayOpacity = options.coverOpacity;
+      overlayOpacity = options.yellowOpacity;
     }
 
     if (!overlayToUse) {
@@ -446,7 +446,7 @@ export const onRequest: PagesFunction = async (context: PagesContext): Promise<R
       await processor.setOverlayImage(overlayImageBuffer);
 
       // 如果需要 cover，从头部导入的 base64 加载
-      if (requestData.useCover) {
+      if (requestData.yellow) {
         const coverImageBuffer = base64ToBuffer(YELLOW_BASE64);
         await processor.setCoverImage(coverImageBuffer);
       }
