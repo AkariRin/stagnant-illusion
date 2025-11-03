@@ -33,27 +33,6 @@ function base64ToBuffer(base64String: string): Uint8Array {
 }
 
 /**
- * 加载资源图片（使用 base64 编码）
- */
-function loadAssetImage(filename: string): Uint8Array {
-  let base64Data: string;
-
-  if (filename === 'stagnant-illusion.png') {
-    base64Data = STAGNANT_ILLUSION_BASE64;
-  } else if (filename === 'yellow.png') {
-    base64Data = YELLOW_BASE64;
-  } else {
-    throw new Error(`Unsupported asset file: ${filename}`);
-  }
-
-  if (!base64Data) {
-    throw new Error(`Base64 data for ${filename} is not configured`);
-  }
-
-  return base64ToBuffer(base64Data);
-}
-
-/**
  * 图像处理引擎 - 使用 jimp 进行像素级操作
  */
 class ImageProcessor {
@@ -139,28 +118,38 @@ class ImageProcessor {
     const scaledWidth = Math.round(baseWidth * options.scale);
     const scaledHeight = Math.round((overlayHeight / overlayWidth) * scaledWidth);
 
+    // 验证缩放尺寸
+    if (!Number.isInteger(scaledWidth) || !Number.isInteger(scaledHeight) || scaledWidth <= 0 || scaledHeight <= 0) {
+      throw new Error(`Invalid scaled dimensions: width=${scaledWidth}, height=${scaledHeight}. Dimensions must be positive integers.`);
+    }
+
     // 缩放覆盖图像
     compositeImage = compositeImage.resize({
-      w: scaledWidth,
-      h: scaledHeight,
+      w: Number.parseInt(String(scaledWidth), 10),
+      h: Number.parseInt(String(scaledHeight), 10),
     });
 
     // 计算位置（pos-x 和 pos-y 范围是 [-1, 1]，转换为实际像素位置）
-    const posX = Math.round(((options['pos-x'] + 1) / 2) * baseWidth - scaledWidth / 2);
-    const posY = Math.round(((options['pos-y'] + 1) / 2) * baseHeight - scaledHeight / 2);
+    const posXRaw = ((options['pos-x'] + 1) / 2) * baseWidth - scaledWidth / 2;
+    const posYRaw = ((options['pos-y'] + 1) / 2) * baseHeight - scaledHeight / 2;
 
-    // 验证位置值必须是有效的数字
-    if (!Number.isFinite(posX) || !Number.isFinite(posY)) {
-      throw new Error(`Invalid position coordinates: x=${posX}, y=${posY}. Ensure image dimensions are valid numbers.`);
+    // 强制转换为整数
+    const posX = Math.round(posXRaw);
+    const posY = Math.round(posYRaw);
+
+    // 验证位置值必须是整数
+    if (!Number.isInteger(posX) || !Number.isInteger(posY)) {
+      throw new Error(`Invalid position coordinates: x=${posX}, y=${posY}. Coordinates must be integers.`);
     }
 
     // 应用透明度
     compositeImage.opacity(overlayOpacity);
 
     // 将覆盖图像合成到基础图像上
+    // 确保坐标是整数类型
     resultImage.composite(compositeImage, {
-      x: posX,
-      y: posY,
+      x: Number.parseInt(String(posX), 10),
+      y: Number.parseInt(String(posY), 10),
     });
 
     // 将结果转换为 PNG Buffer
