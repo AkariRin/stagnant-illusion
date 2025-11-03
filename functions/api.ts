@@ -18,51 +18,6 @@ export interface ComposeImageRequest {
  */
 export type CompositionOptions = Omit<ComposeImageRequest, 'image'>;
 
-/**
- * 图像合成结果数据
- */
-export interface CompositionResult {
-  image: string;
-  processingTime: number;
-}
-
-/**
- * 成功的 API 响应
- */
-export interface SuccessResponse<T = unknown> {
-  success: true;
-  message: string;
-  data?: T;
-}
-
-/**
- * 错误信息
- */
-export interface ErrorInfo {
-  code: string;
-  message: string;
-}
-
-/**
- * 失败的 API 响应
- */
-export interface ErrorResponse {
-  success: false;
-  message: string;
-  error: ErrorInfo;
-}
-
-/**
- * 图像合成 API 响应
- */
-export type ComposeImageResponse =
-  | SuccessResponse<CompositionResult>
-  | ErrorResponse;
-
-/**
- * 将 base64 字符串转换为 Uint8Array
- * 使用标准 Web API，完全兼容 Cloudflare Workers
- */
 function base64ToUint8Array(base64String: string): Uint8Array {
   // 移除 data: URI scheme 和 mime type
   const cleanBase64 = base64String.split(',')[1] || base64String;
@@ -74,18 +29,6 @@ function base64ToUint8Array(base64String: string): Uint8Array {
     bytes[i] = binaryString.charCodeAt(i);
   }
   return bytes;
-}
-
-/**
- * 将 Uint8Array 转换为 base64 字符串
- * 使用标准 Web API，完全兼容 Cloudflare Workers
- */
-function uint8ArrayToBase64(uint8Array: Uint8Array, mimeType: string = 'image/png'): string {
-  let binaryString = '';
-  for (let i = 0; i < uint8Array.length; i++) {
-    binaryString += String.fromCharCode(uint8Array[i]);
-  }
-  return `data:${mimeType};base64,${globalThis.btoa(binaryString)}`;
 }
 
 /**
@@ -359,23 +302,27 @@ export const onRequest: PagesFunction = async (context: PagesContext): Promise<R
       }
 
       // 执行图像合成
-      const resultBuffer = await processor.compose(requestData);
+      const resultUint8Array = await processor.compose(requestData);
       const processingTime = Date.now() - startTime;
 
-      const response: ComposeImageResponse = {
-        success: true,
-        message: 'Image composition successful',
-        data: {
-          image: uint8ArrayToBase64(resultBuffer, 'image/png'),
-          processingTime,
-        },
-      };
+      // 将 Uint8Array 转换为 ArrayBuffer（仅限标准 ArrayBuffer，不含 SharedArrayBuffer）
+      let arrayBuffer: ArrayBuffer;
+      if (resultUint8Array.buffer instanceof ArrayBuffer && !(resultUint8Array.buffer instanceof SharedArrayBuffer)) {
+        arrayBuffer = resultUint8Array.buffer.slice(
+          resultUint8Array.byteOffset,
+          resultUint8Array.byteOffset + resultUint8Array.byteLength
+        ) as ArrayBuffer;
+      } else {
+        // 如果不是普通 ArrayBuffer，创建一个新的
+        arrayBuffer = new Uint8Array(resultUint8Array).buffer as ArrayBuffer;
+      }
 
-      return new Response(JSON.stringify(response), {
+      return new Response(arrayBuffer, {
         status: 200,
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'image/png',
           'Access-Control-Allow-Origin': '*',
+          'X-Processing-Time': processingTime.toString(),
         },
       });
     } catch (processingError: unknown) {
