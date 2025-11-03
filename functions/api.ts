@@ -314,7 +314,7 @@ function validateCompositionOptions(options: unknown): options is CompositionOpt
   }
 
   const opt = options as Record<string, unknown>;
-  const requiredFields = ['pos-x', 'pos-y', 'scale', 'opacity', 'brightness', 'useCover', 'coverOpacity'];
+  const requiredFields = ['pos-x', 'pos-y', 'scale', 'opacity', 'brightness', 'yellow', 'yellowOpacity'];
 
   // 检查所有必需字段是否存在
   for (const field of requiredFields) {
@@ -330,8 +330,8 @@ function validateCompositionOptions(options: unknown): options is CompositionOpt
     typeof opt.scale === 'number' && Number.isFinite(opt.scale) && opt.scale >= 0.1 && opt.scale <= 3 &&
     typeof opt.opacity === 'number' && Number.isFinite(opt.opacity) && opt.opacity >= 0 && opt.opacity <= 1 &&
     typeof opt.brightness === 'number' && Number.isFinite(opt.brightness) && opt.brightness >= 0 && opt.brightness <= 200 &&
-    typeof opt.useCover === 'boolean' &&
-    typeof opt.coverOpacity === 'number' && Number.isFinite(opt.coverOpacity) && opt.coverOpacity >= 0 && opt.coverOpacity <= 1
+    typeof opt.yellow === 'boolean' &&
+    typeof opt.yellowOpacity === 'number' && Number.isFinite(opt.yellowOpacity) && opt.yellowOpacity >= 0 && opt.yellowOpacity <= 1
   );
 }
 
@@ -420,7 +420,7 @@ export const onRequest: PagesFunction = async (context: PagesContext): Promise<R
           error: {
             code: 'INVALID_OPTIONS',
             message:
-              'Options parameters do not meet requirements. Check: pos-x [-1,1], pos-y [-1,1], scale [0.1,3], opacity [0,1], brightness [0,200], useCover (boolean), coverOpacity [0,1]',
+              'Options parameters do not meet requirements. Check: pos-x [-1,1], pos-y [-1,1], scale [0.1,3], opacity [0,1], brightness [0,200], yellow (boolean), yellowOpacity [0,1]',
           },
         }),
         {
