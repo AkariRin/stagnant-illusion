@@ -256,12 +256,52 @@ class ImageProcessor {
     }
 
     // 将结果转换为 PNG Buffer
-    const result = await resultImage.png().toBuffer();
-    // 确保返回 Uint8Array 格式以兼容 Workers 环境
-    if (result instanceof Uint8Array) {
-      return result;
+    try {
+      // 尝试多种方式导出 PNG
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const resultAny = resultImage as any;
+
+      let pngBuffer: Uint8Array | Buffer;
+
+      // 方式 1：尝试使用 png() 和 toBuffer()
+      if (typeof resultAny.png === 'function') {
+        const pngPlugin = resultAny.png();
+        if (typeof pngPlugin.toBuffer === 'function') {
+          pngBuffer = await pngPlugin.toBuffer();
+        } else if (typeof pngPlugin.then === 'function') {
+          // 如果 png() 返回 Promise
+          pngBuffer = await pngPlugin;
+        } else {
+          throw new Error('Unable to convert PNG plugin to buffer');
+        }
+      }
+      // 方式 2：尝试使用 buffer() 方法
+      else if (typeof resultAny.buffer === 'function') {
+        pngBuffer = await resultAny.buffer('image/png');
+      }
+      // 方式 3：尝试使用 toBuffer() 方法
+      else if (typeof resultAny.toBuffer === 'function') {
+        pngBuffer = await resultAny.toBuffer();
+      }
+      else {
+        throw new Error(`No export method found. Available methods: ${Object.keys(resultAny).filter(k => typeof resultAny[k] === 'function').slice(0, 10).join(', ')}`);
+      }
+
+      // 确保返回 Uint8Array 格式以兼容 Workers 环境
+      if (pngBuffer instanceof Uint8Array) {
+        return pngBuffer;
+      }
+      // 尝试作为通用的 ArrayBuffer 或 ArrayLike 对象处理
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((pngBuffer as any).buffer instanceof ArrayBuffer) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return new Uint8Array((pngBuffer as any).buffer);
+      }
+      return new Uint8Array(pngBuffer as ArrayBufferLike);
+    } catch (pngError: unknown) {
+      const errorMsg = pngError instanceof Error ? pngError.message : String(pngError);
+      throw new Error(`Failed to encode PNG: ${errorMsg}`);
     }
-    return new Uint8Array(result);
   }
 }
 
