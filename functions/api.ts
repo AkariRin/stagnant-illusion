@@ -68,21 +68,21 @@ class ImageProcessor {
    * 加载基础图像（底图）
    */
   async setBaseImage(imageBuffer: Uint8Array): Promise<void> {
-    this.baseImage = await Jimp.read(imageBuffer.buffer as ArrayBuffer);
+    this.baseImage = await Jimp.read(imageBuffer);
   }
 
   /**
    * 加载覆盖层图像
    */
   async setOverlayImage(imageBuffer: Uint8Array): Promise<void> {
-    this.overlayImage = await Jimp.read(imageBuffer.buffer as ArrayBuffer);
+    this.overlayImage = await Jimp.read(imageBuffer);
   }
 
   /**
    * 加载封面图像（黄色源石）
    */
   async setCoverImage(imageBuffer: Uint8Array): Promise<void> {
-    this.coverImage = await Jimp.read(imageBuffer.buffer as ArrayBuffer);
+    this.coverImage = await Jimp.read(imageBuffer);
   }
 
   /**
@@ -127,6 +127,15 @@ class ImageProcessor {
     const overlayWidth = compositeImage.bitmap.width;
     const overlayHeight = compositeImage.bitmap.height;
 
+    // 验证所有尺寸都是有效的正整数
+    if (!Number.isFinite(baseWidth) || !Number.isFinite(baseHeight) || baseWidth <= 0 || baseHeight <= 0) {
+      throw new Error(`Invalid base image dimensions: width=${baseWidth}, height=${baseHeight}. Dimensions must be positive finite numbers.`);
+    }
+
+    if (!Number.isFinite(overlayWidth) || !Number.isFinite(overlayHeight) || overlayWidth <= 0 || overlayHeight <= 0) {
+      throw new Error(`Invalid overlay image dimensions: width=${overlayWidth}, height=${overlayHeight}. Dimensions must be positive finite numbers.`);
+    }
+
     const scaledWidth = Math.round(baseWidth * options.scale);
     const scaledHeight = Math.round((overlayHeight / overlayWidth) * scaledWidth);
 
@@ -139,6 +148,11 @@ class ImageProcessor {
     // 计算位置（pos-x 和 pos-y 范围是 [-1, 1]，转换为实际像素位置）
     const posX = Math.round(((options['pos-x'] + 1) / 2) * baseWidth - scaledWidth / 2);
     const posY = Math.round(((options['pos-y'] + 1) / 2) * baseHeight - scaledHeight / 2);
+
+    // 验证位置值必须是有效的数字
+    if (!Number.isFinite(posX) || !Number.isFinite(posY)) {
+      throw new Error(`Invalid position coordinates: x=${posX}, y=${posY}. Ensure image dimensions are valid numbers.`);
+    }
 
     // 应用透明度
     compositeImage.opacity(overlayOpacity);
@@ -177,15 +191,15 @@ function validateCompositionOptions(options: unknown): options is CompositionOpt
     }
   }
 
-  // 验证所有字段的类型和范围
+  // 验证所有字段的类型和范围，并检查NaN/Infinity
   return (
-    typeof opt['pos-x'] === 'number' && opt['pos-x'] >= -1 && opt['pos-x'] <= 1 &&
-    typeof opt['pos-y'] === 'number' && opt['pos-y'] >= -1 && opt['pos-y'] <= 1 &&
-    typeof opt.scale === 'number' && opt.scale >= 0.1 && opt.scale <= 3 &&
-    typeof opt.opacity === 'number' && opt.opacity >= 0 && opt.opacity <= 1 &&
-    typeof opt.brightness === 'number' && opt.brightness >= 0 && opt.brightness <= 200 &&
+    typeof opt['pos-x'] === 'number' && Number.isFinite(opt['pos-x']) && opt['pos-x'] >= -1 && opt['pos-x'] <= 1 &&
+    typeof opt['pos-y'] === 'number' && Number.isFinite(opt['pos-y']) && opt['pos-y'] >= -1 && opt['pos-y'] <= 1 &&
+    typeof opt.scale === 'number' && Number.isFinite(opt.scale) && opt.scale >= 0.1 && opt.scale <= 3 &&
+    typeof opt.opacity === 'number' && Number.isFinite(opt.opacity) && opt.opacity >= 0 && opt.opacity <= 1 &&
+    typeof opt.brightness === 'number' && Number.isFinite(opt.brightness) && opt.brightness >= 0 && opt.brightness <= 200 &&
     typeof opt.useCover === 'boolean' &&
-    typeof opt.coverOpacity === 'number' && opt.coverOpacity >= 0 && opt.coverOpacity <= 1
+    typeof opt.coverOpacity === 'number' && Number.isFinite(opt.coverOpacity) && opt.coverOpacity >= 0 && opt.coverOpacity <= 1
   );
 }
 
