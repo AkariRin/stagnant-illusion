@@ -2,7 +2,7 @@ import { Jimp } from 'jimp';
 import { STAGNANT_ILLUSION_BASE64, YELLOW_BASE64 } from './base64';
 
 /**
- * 图像合成 API 请求参数接口（GET 参数）
+ * 图像合成 API 请求参数接口（POST 请求体）
  */
 export interface ComposeImageRequest {
   // 图像合成选项（除 image 外均为可选，有默认值）
@@ -307,20 +307,20 @@ function validateCompositionOptions(options: unknown): options is CompositionOpt
 
 
 /**
- * 图像合成 API 端点（使用 GET 方法）
+ * 图像合成 API 端点（使用 POST 方法）
  * 注意：这是导出给 Cloudflare Pages 作为 API 处理器使用的
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const onRequest = async (context: any): Promise<Response> => {
-  // 仅接受 GET 请求
-  if (context.request.method !== 'GET') {
+  // 仅接受 POST 请求
+  if (context.request.method !== 'POST') {
     return new Response(
       JSON.stringify({
         success: false,
         message: 'Method not allowed',
         error: {
           code: 'METHOD_NOT_ALLOWED',
-          message: 'Only GET requests are supported',
+          message: 'Only POST requests are supported',
         },
       }),
       {
@@ -334,20 +334,18 @@ export const onRequest = async (context: any): Promise<Response> => {
   }
 
   try {
-    // 解析 URL 查询参数
-    const url = new URL(context.request.url);
-    const params = url.searchParams;
-
-    // 验证必需的 image 参数
-    const image = params.get('image');
-    if (!image) {
+    // 解析 JSON 请求体
+    let requestData: unknown;
+    try {
+      requestData = await context.request.json();
+    } catch {
       return new Response(
         JSON.stringify({
           success: false,
-          message: 'Missing required parameter',
+          message: 'Invalid JSON',
           error: {
-            code: 'INVALID_REQUEST',
-            message: 'Request must include: image',
+            code: 'INVALID_JSON',
+            message: 'Request body must be valid JSON',
           },
         }),
         {
@@ -360,27 +358,50 @@ export const onRequest = async (context: any): Promise<Response> => {
       );
     }
 
+    // 验证必需的 image 参数
+    if (typeof requestData !== 'object' || requestData === null || !('image' in requestData)) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: 'Missing required parameter',
+          error: {
+            code: 'INVALID_REQUEST',
+            message: 'Request body must include: image',
+          },
+        }),
+        {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          },
+        }
+      );
+    }
+
+    const data = requestData as Record<string, unknown>;
+
     // 解析可选参数，应用默认值
-    const requestData: ComposeImageRequest = {
-      image,
-      'pos-x': params.has('pos-x') ? parseFloat(params.get('pos-x')!) : 0,
-      'pos-y': params.has('pos-y') ? parseFloat(params.get('pos-y')!) : 0,
-      scale: params.has('scale') ? parseFloat(params.get('scale')!) : 1,
-      opacity: params.has('opacity') ? parseFloat(params.get('opacity')!) : 0.8,
-      brightness: params.has('brightness') ? parseFloat(params.get('brightness')!) : 100,
-      yellow: params.has('yellow') ? params.get('yellow') === 'true' : false,
-      yellowOpacity: params.has('yellowOpacity') ? parseFloat(params.get('yellowOpacity')!) : 1,
+    const processedData: ComposeImageRequest = {
+      image: data.image as string,
+      'pos-x': typeof data['pos-x'] === 'number' ? data['pos-x'] : 0,
+      'pos-y': typeof data['pos-y'] === 'number' ? data['pos-y'] : 0,
+      scale: typeof data.scale === 'number' ? data.scale : 1,
+      opacity: typeof data.opacity === 'number' ? data.opacity : 0.8,
+      brightness: typeof data.brightness === 'number' ? data.brightness : 100,
+      yellow: typeof data.yellow === 'boolean' ? data.yellow : false,
+      yellowOpacity: typeof data.yellowOpacity === 'number' ? data.yellowOpacity : 1,
     };
 
     // 构造选项对象用于验证
     const options: CompositionOptions = {
-      'pos-x': requestData['pos-x']!,
-      'pos-y': requestData['pos-y']!,
-      scale: requestData.scale!,
-      opacity: requestData.opacity!,
-      brightness: requestData.brightness!,
-      yellow: requestData.yellow!,
-      yellowOpacity: requestData.yellowOpacity!,
+      'pos-x': processedData['pos-x']!,
+      'pos-y': processedData['pos-y']!,
+      scale: processedData.scale!,
+      opacity: processedData.opacity!,
+      brightness: processedData.brightness!,
+      yellow: processedData.yellow!,
+      yellowOpacity: processedData.yellowOpacity!,
     };
 
     // 验证选项参数
@@ -410,7 +431,7 @@ export const onRequest = async (context: any): Promise<Response> => {
 
     try {
       // 加载图像
-      const baseImageBuffer = base64ToBuffer(requestData.image);
+      const baseImageBuffer = base64ToBuffer(processedData.image);
       // 从头部导入的 base64 加载 overlay 图像
       const overlayImageBuffer = base64ToBuffer(STAGNANT_ILLUSION_BASE64);
 
@@ -418,7 +439,7 @@ export const onRequest = async (context: any): Promise<Response> => {
       await processor.setOverlayImage(overlayImageBuffer);
 
       // 如果需要 cover，从头部导入的 base64 加载
-      if (requestData.yellow) {
+      if (processedData.yellow) {
         const coverImageBuffer = base64ToBuffer(YELLOW_BASE64);
         await processor.setCoverImage(coverImageBuffer);
       }

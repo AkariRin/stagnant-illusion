@@ -9,16 +9,25 @@
 
 ### 端点
 
-**GET** `/api`
+**POST** `/api`
 
 ### 请求
 
-通过 URL 查询参数发送 GET 请求。
+通过 JSON 请求体发送 POST 请求。
 
-#### 查询参数
+#### 请求体参数
 
-```
-/api?image={base64_encoded_image}&pos-x=0&pos-y=0&scale=0.8&opacity=0.8&brightness=100&yellow=false&yellowOpacity=1
+```json
+{
+  "image": "base64_encoded_image",
+  "pos-x": 0,
+  "pos-y": 0,
+  "scale": 0.8,
+  "opacity": 0.8,
+  "brightness": 100,
+  "yellow": false,
+  "yellowOpacity": 1
+}
 ```
 
 #### 参数说明
@@ -63,7 +72,7 @@
 
 **405 - 方法不允许**
 
-仅支持 GET 请求。
+仅支持 POST 请求。
 
 **500 - 服务器错误**
 
@@ -86,31 +95,40 @@
 
 ```typescript
 const image = ''; // Base64 encoded image string
-const params = new URLSearchParams({
-  image,
-  'pos-x': '0',
-  'pos-y': '0',
-  'scale': '0.8',
-  'opacity': '0.8',
-  'brightness': '100',
-  'yellow': 'false',
-  'yellowOpacity': '1',
-});
 
-const response = await fetch(`/api?${params.toString()}`, {
-  method: 'GET',
+const response = await fetch('/api', {
+  method: 'POST',
   headers: {
-    'Accept': 'image/png',
+    'Content-Type': 'application/json',
   },
+  body: JSON.stringify({
+    image,
+    'pos-x': 0,
+    'pos-y': 0,
+    'scale': 0.8,
+    'opacity': 0.8,
+    'brightness': 100,
+    'yellow': false,
+    'yellowOpacity': 1,
+  }),
 });
 
 const imageBlob = await response.blob();
-const imageUrl = URL.createObjectURL(imageBlob);
 ```
 
 #### cURL
 
 ```bash
-curl "https://stagnant-illusion.rbq.dev/api?image={base64}&pos-x=0&pos-y=0&scale=0.8&opacity=0.8&brightness=100&yellow=false&yellowOpacity=1" \
-  --output result.png
+curl -X POST https://example.com/api \
+  -H "Content-Type: application/json" \
+  -d '{
+    "image": "base64_encoded_image_here",
+    "pos-x": 0,
+    "pos-y": 0,
+    "scale": 0.8,
+    "opacity": 0.8,
+    "brightness": 100,
+    "yellow": false,
+    "yellowOpacity": 1
+  }'
 ```
