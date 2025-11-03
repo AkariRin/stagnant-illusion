@@ -1,7 +1,8 @@
 /**
- * 图像合成选项接口
+ * 图像合成 API 请求体接口
  */
-export interface CompositionOptions {
+export interface ComposeImageRequest {
+  // 图像合成选项
   'pos-x': number;
   'pos-y': number;
   scale: number;
@@ -9,17 +10,16 @@ export interface CompositionOptions {
   brightness: number;
   useCover: boolean;
   coverOpacity: number;
+  // 图像数据
+  image: string;
+  overlayImage: string;
+  coverImage?: string;
 }
 
 /**
- * 图像合成 API 请求体接口
+ * 图像合成选项接口（与 ComposeImageRequest 保持一致）
  */
-export interface ComposeImageRequest {
-  baseImage: string;
-  overlayImage: string;
-  coverImage?: string;
-  options: CompositionOptions;
-}
+export type CompositionOptions = Omit<ComposeImageRequest, 'image' | 'overlayImage' | 'coverImage'>;
 
 /**
  * 图像合成结果数据
@@ -279,7 +279,7 @@ export const onRequest: PagesFunction = async (context: PagesContext): Promise<R
     const requestData = await context.request.json() as ComposeImageRequest;
 
     // 验证必需字段
-    if (!requestData.baseImage || !requestData.overlayImage || !requestData.options) {
+    if (!requestData.image || !requestData.overlayImage) {
       return new Response(
         JSON.stringify({
           success: false,
@@ -287,7 +287,7 @@ export const onRequest: PagesFunction = async (context: PagesContext): Promise<R
           error: {
             code: 'INVALID_REQUEST',
             message:
-              'Request must include: baseImage, overlayImage, and options',
+              'Request must include: image and overlayImage',
           },
         }),
         {
@@ -301,7 +301,7 @@ export const onRequest: PagesFunction = async (context: PagesContext): Promise<R
     }
 
     // 验证选项参数
-    if (!validateCompositionOptions(requestData.options)) {
+    if (!validateCompositionOptions(requestData)) {
       return new Response(
         JSON.stringify({
           success: false,
@@ -327,7 +327,7 @@ export const onRequest: PagesFunction = async (context: PagesContext): Promise<R
 
     try {
       // 加载图像
-      const baseImageBuffer = base64ToUint8Array(requestData.baseImage);
+      const baseImageBuffer = base64ToUint8Array(requestData.image);
       const overlayImageBuffer = base64ToUint8Array(requestData.overlayImage);
 
       await processor.setBaseImage(baseImageBuffer);
@@ -340,7 +340,7 @@ export const onRequest: PagesFunction = async (context: PagesContext): Promise<R
       }
 
       // 执行图像合成
-      const resultBuffer = await processor.compose(requestData.options);
+      const resultBuffer = await processor.compose(requestData);
       const processingTime = Date.now() - startTime;
 
       const response: ComposeImageResponse = {
