@@ -1,5 +1,5 @@
 ### 完整参数
-POST https://stagnant-illusion.rbq.dev/api
+GET https://stagnant-illusion.rbq.dev/api
 Content-Type: application/json
 
 {
@@ -14,7 +14,7 @@ Content-Type: application/json
 }
 
 ### 完整参数 - 黄色源石叠加
-POST https://stagnant-illusion.rbq.dev/api
+GET https://stagnant-illusion.rbq.dev/api
 Content-Type: application/json
 
 {
@@ -29,7 +29,7 @@ Content-Type: application/json
 }
 
 ### 最小化参数
-POST https://stagnant-illusion.rbq.dev/api
+GET https://stagnant-illusion.rbq.dev/api
 Content-Type: application/json
 
 {
@@ -37,7 +37,7 @@ Content-Type: application/json
 }
 
 ### 最小化参数 - 黄色源石叠加
-POST https://stagnant-illusion.rbq.dev/api
+GET https://stagnant-illusion.rbq.dev/api
 Content-Type: application/json
 
 {

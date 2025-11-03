@@ -5,31 +5,20 @@
 ## 原项目
 原项目为[SusieGlitter/prts](https://github.com/SusieGlitter/prts)
 
-## Cloudflare Workers API
-
-> ⚠️ **API 尚未完成** - 目前API开发碰到技术问题，若有热心大佬可提交PR
+## Cloudflare Pages API
 
 ### 端点
 
-**POST** `/api`
+**GET** `/api`
 
 ### 请求
 
-使用 JSON 格式发送 POST 请求，Content-Type 必须为 `application/json`。
+通过 URL 查询参数发送 GET 请求。
 
-#### 请求体
+#### 查询参数
 
-```json
-{
-  "image": "base64_encoded_image",
-  "pos-x": 0,
-  "pos-y": 0,
-  "scale": 0.8,
-  "opacity": 1,
-  "brightness": 100,
-  "yellow": false,
-  "yellowOpacity": 1
-}
+```
+/api?image={base64_encoded_image}&pos-x=0&pos-y=0&scale=0.8&opacity=0.8&brightness=100&yellow=false&yellowOpacity=1
 ```
 
 #### 参数说明
@@ -58,7 +47,6 @@
 #### 错误响应
 
 **400 - 请求错误**
-- 无效的 Content-Type（需要 `application/json`）
 - 缺少 `image` 参数
 - 参数值超出允许范围
 
@@ -68,14 +56,14 @@
   "message": "Invalid composition options",
   "error": {
     "code": "INVALID_OPTIONS",
-    "message": "Options parameters do not meet requirements..."
+    "message": "Options parameters do not meet requirements. Check: pos-x [-1,1], pos-y [-1,1], scale [0.1,3], opacity [0,1], brightness [0,200], yellow (boolean), yellowOpacity [0,1]"
   }
 }
 ```
 
 **405 - 方法不允许**
 
-仅支持 POST 请求。
+仅支持 GET 请求。
 
 **500 - 服务器错误**
 
@@ -98,21 +86,22 @@
 
 ```typescript
 const image = ''; // Base64 encoded image string
-const response = await fetch('/api/compose', {
-  method: 'POST',
+const params = new URLSearchParams({
+  image,
+  'pos-x': '0',
+  'pos-y': '0',
+  'scale': '0.8',
+  'opacity': '0.8',
+  'brightness': '100',
+  'yellow': 'false',
+  'yellowOpacity': '1',
+});
+
+const response = await fetch(`/api?${params.toString()}`, {
+  method: 'GET',
   headers: {
-    'Content-Type': 'application/json',
+    'Accept': 'image/png',
   },
-  body: JSON.stringify({
-    image,
-    'pos-x': 0,
-    'pos-y': 0,
-    scale: 0.8,
-    opacity: 1,
-    brightness: 100,
-    yellow: false,
-    yellowOpacity: 1,
-  }),
 });
 
 const imageBlob = await response.blob();
@@ -122,17 +111,6 @@ const imageUrl = URL.createObjectURL(imageBlob);
 #### cURL
 
 ```bash
-curl -X POST https://stagnant-illusion.rbq.dev/api \
-  -H "Content-Type: application/json" \
-  -d '{
-    "image": "data:image/jpeg;base64,...",
-    "pos-x": 0,
-    "pos-y": 0,
-    "scale": 0.8,
-    "opacity": 1,
-    "brightness": 100,
-    "yellow": false,
-    "yellowOpacity": 1
-  }' \
+curl "https://stagnant-illusion.rbq.dev/api?image={base64}&pos-x=0&pos-y=0&scale=0.8&opacity=0.8&brightness=100&yellow=false&yellowOpacity=1" \
   --output result.png
 ```
