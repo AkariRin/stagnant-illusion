@@ -22,9 +22,29 @@ export interface ComposeImageRequest {
 export type CompositionOptions = Omit<ComposeImageRequest, 'image'>;
 
 function base64ToBuffer(base64String: string): Uint8Array {
+  if (!base64String || typeof base64String !== 'string') {
+    throw new Error('Invalid base64 string: input must be a non-empty string');
+  }
+
   // 移除 data: URI scheme 和 mime type
-  const cleanBase64 = base64String.split(',')[1] || base64String;
-  const binaryString = atob(cleanBase64);
+  const cleanBase64 = base64String.includes(',') ? base64String.split(',')[1] : base64String;
+
+  if (!cleanBase64 || cleanBase64.length === 0) {
+    throw new Error('Invalid base64 string: no data found after removing URI scheme');
+  }
+
+  // 尝试解码，捕获可能的 base64 解码错误
+  let binaryString: string;
+  try {
+    binaryString = atob(cleanBase64.trim());
+  } catch (error) {
+    throw new Error(`Failed to decode base64 string: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+
+  if (!binaryString || binaryString.length === 0) {
+    throw new Error('Failed to decode base64 string: decoded data is empty');
+  }
+
   const bytes = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) {
     bytes[i] = binaryString.charCodeAt(i);
@@ -101,18 +121,18 @@ class ImageProcessor {
     let compositeImage = overlayToUse.clone();
 
     // 计算缩放后的尺寸
-    const baseWidth = resultImage.bitmap.width;
-    const baseHeight = resultImage.bitmap.height;
-    const overlayWidth = compositeImage.bitmap.width;
-    const overlayHeight = compositeImage.bitmap.height;
+    const baseWidth = Math.trunc(resultImage.bitmap.width);
+    const baseHeight = Math.trunc(resultImage.bitmap.height);
+    const overlayWidth = Math.trunc(compositeImage.bitmap.width);
+    const overlayHeight = Math.trunc(compositeImage.bitmap.height);
 
     // 验证所有尺寸都是有效的正整数
-    if (!Number.isFinite(baseWidth) || !Number.isFinite(baseHeight) || baseWidth <= 0 || baseHeight <= 0) {
-      throw new Error(`Invalid base image dimensions: width=${baseWidth}, height=${baseHeight}. Dimensions must be positive finite numbers.`);
+    if (!Number.isInteger(baseWidth) || !Number.isInteger(baseHeight) || baseWidth <= 0 || baseHeight <= 0) {
+      throw new Error(`Invalid base image dimensions: width=${baseWidth}, height=${baseHeight}. Dimensions must be positive integers.`);
     }
 
-    if (!Number.isFinite(overlayWidth) || !Number.isFinite(overlayHeight) || overlayWidth <= 0 || overlayHeight <= 0) {
-      throw new Error(`Invalid overlay image dimensions: width=${overlayWidth}, height=${overlayHeight}. Dimensions must be positive finite numbers.`);
+    if (!Number.isInteger(overlayWidth) || !Number.isInteger(overlayHeight) || overlayWidth <= 0 || overlayHeight <= 0) {
+      throw new Error(`Invalid overlay image dimensions: width=${overlayWidth}, height=${overlayHeight}. Dimensions must be positive integers.`);
     }
 
     const scaledWidth = Math.round(baseWidth * options.scale);
@@ -124,9 +144,12 @@ class ImageProcessor {
     }
 
     // 缩放覆盖图像
+    const finalScaledWidth = scaledWidth >>> 0;  // 使用位运算强制转换为无符号整数
+    const finalScaledHeight = scaledHeight >>> 0;
+
     compositeImage = compositeImage.resize({
-      w: Number.parseInt(String(scaledWidth), 10),
-      h: Number.parseInt(String(scaledHeight), 10),
+      w: finalScaledWidth,
+      h: finalScaledHeight,
     });
 
     // 计算位置（pos-x 和 pos-y 范围是 [-1, 1]，转换为实际像素位置）
@@ -137,9 +160,24 @@ class ImageProcessor {
     const posX = Math.round(posXRaw);
     const posY = Math.round(posYRaw);
 
-    // 验证位置值必须是整数
+    // 详细的坐标验证信息
     if (!Number.isInteger(posX) || !Number.isInteger(posY)) {
-      throw new Error(`Invalid position coordinates: x=${posX}, y=${posY}. Coordinates must be integers.`);
+      throw new Error(
+        `Invalid position coordinates: x=${posX} (raw: ${posXRaw}), y=${posY} (raw: ${posYRaw}). ` +
+        `Base dimensions: ${baseWidth}x${baseHeight}, Scaled dimensions: ${scaledWidth}x${scaledHeight}, ` +
+        `Options: pos-x=${options['pos-x']}, pos-y=${options['pos-y']}`
+      );
+    }
+
+    // 最后一次类型检查和转换
+    const finalPosX = Math.trunc(posX);
+    const finalPosY = Math.trunc(posY);
+
+    if (typeof finalPosX !== 'number' || typeof finalPosY !== 'number' || !isFinite(finalPosX) || !isFinite(finalPosY)) {
+      throw new Error(
+        `Final position coordinates are invalid: x=${finalPosX} (type: ${typeof finalPosX}), ` +
+        `y=${finalPosY} (type: ${typeof finalPosY})`
+      );
     }
 
     // 应用透明度
@@ -148,8 +186,8 @@ class ImageProcessor {
     // 将覆盖图像合成到基础图像上
     // 确保坐标是整数类型
     resultImage.composite(compositeImage, {
-      x: Number.parseInt(String(posX), 10),
-      y: Number.parseInt(String(posY), 10),
+      x: finalPosX,
+      y: finalPosY,
     });
 
     // 将结果转换为 PNG Buffer
