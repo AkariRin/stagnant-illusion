@@ -1,11 +1,9 @@
-import Canvas from 'canvas';
-
 /**
  * 图像合成选项接口
  */
 export interface CompositionOptions {
-  posX: number;
-  posY: number;
+  'pos-x': number;
+  'pos-y': number;
   scale: number;
   opacity: number;
   brightness: number;
@@ -64,37 +62,63 @@ export type ComposeImageResponse =
   | SuccessResponse<CompositionResult>
   | ErrorResponse;
 
+/**
+ * 将 base64 字符串转换为 Uint8Array
+ */
+function base64ToUint8Array(base64String: string): Uint8Array {
+  const cleanBase64 = base64String.replace(/^data:image\/\w+;base64,/, '');
+  const binaryString = atob(cleanBase64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
 
 /**
- * 图像处理引擎 - 使用 Node.js Canvas 兼容 API
+ * 将 Uint8Array 转换为 base64 字符串
+ */
+function uint8ArrayToBase64(uint8Array: Uint8Array, mimeType: string = 'image/png'): string {
+  let binaryString = '';
+  for (let i = 0; i < uint8Array.length; i++) {
+    binaryString += String.fromCharCode(uint8Array[i]);
+  }
+  return `data:${mimeType};base64,${btoa(binaryString)}`;
+}
+
+/**
+ * 图像处理引擎 - 使用 Web Canvas API（Cloudflare 兼容）
  */
 class ImageProcessor {
-  private baseImage: Canvas.Image | null = null;
-  private overlayImage: Canvas.Image | null = null;
-  private coverImage: Canvas.Image | null = null;
+  private baseImage: HTMLImageElement | null = null;
+  private overlayImage: HTMLImageElement | null = null;
+  private coverImage: HTMLImageElement | null = null;
   private baseScale: number = 1;
 
   /**
-   * 从 Buffer 加载图像
+   * 从 Uint8Array 加载图像
    */
-  async loadImageFromBuffer(imageBuffer: Buffer): Promise<Canvas.Image> {
-    const { Image } = Canvas;
-    const image = new Image();
-    image.src = imageBuffer;
-    return image;
+  private async loadImageFromBuffer(imageBuffer: Uint8Array): Promise<HTMLImageElement> {
+    const base64String = uint8ArrayToBase64(imageBuffer);
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = base64String;
+    });
   }
 
   /**
    * 设置基础图像（底图）
    */
-  async setBaseImage(imageBuffer: Buffer): Promise<void> {
+  async setBaseImage(imageBuffer: Uint8Array): Promise<void> {
     this.baseImage = await this.loadImageFromBuffer(imageBuffer);
   }
 
   /**
    * 设置覆盖层图像
    */
-  async setOverlayImage(imageBuffer: Buffer): Promise<void> {
+  async setOverlayImage(imageBuffer: Uint8Array): Promise<void> {
     this.overlayImage = await this.loadImageFromBuffer(imageBuffer);
     this.calculateBaseScale();
   }
@@ -102,7 +126,7 @@ class ImageProcessor {
   /**
    * 设置封面图像（黄色源石）
    */
-  async setCoverImage(imageBuffer: Buffer): Promise<void> {
+  async setCoverImage(imageBuffer: Uint8Array): Promise<void> {
     this.coverImage = await this.loadImageFromBuffer(imageBuffer);
   }
 
@@ -120,9 +144,9 @@ class ImageProcessor {
   }
 
   /**
-   * 合成图像并返回 Buffer
+   * 合成图像并返回 Uint8Array
    */
-  async compose(options: CompositionOptions): Promise<Buffer> {
+  async compose(options: CompositionOptions): Promise<Uint8Array> {
     if (!this.baseImage) {
       throw new Error('Base image not loaded');
     }
@@ -131,7 +155,7 @@ class ImageProcessor {
     }
 
     // 创建主画布
-    const canvas = Canvas.createCanvas(this.baseImage.width, this.baseImage.height);
+    const canvas = new OffscreenCanvas(this.baseImage.width, this.baseImage.height);
     const ctx = canvas.getContext('2d');
 
     if (!ctx) {
@@ -147,7 +171,7 @@ class ImageProcessor {
     ctx.drawImage(this.baseImage, 0, 0, canvas.width, canvas.height);
 
     // 创建中间画布用于处理覆盖层效果
-    const intermediateCanvas = Canvas.createCanvas(canvas.width, canvas.height);
+    const intermediateCanvas = new OffscreenCanvas(canvas.width, canvas.height);
     const iCtx = intermediateCanvas.getContext('2d');
 
     if (!iCtx) {
@@ -160,8 +184,8 @@ class ImageProcessor {
 
     // 计算覆盖层图像的位置和大小
     const scaleFactor = this.baseScale * options.scale;
-    const posXValue = Math.floor(options.posX * canvas.width);
-    const posYValue = Math.floor(options.posY * canvas.height);
+    const posXValue = Math.floor(options['pos-x'] * canvas.width);
+    const posYValue = Math.floor(options['pos-y'] * canvas.height);
 
     const imgWidth = this.overlayImage.width * scaleFactor;
     const imgHeight = this.overlayImage.height * scaleFactor;
@@ -176,7 +200,7 @@ class ImageProcessor {
 
     // 将中间画布合成到主画布
     ctx.globalAlpha = options.opacity;
-    ctx.drawImage(intermediateCanvas, 0, 0);
+    ctx.drawImage(intermediateCanvas as unknown as CanvasImageSource, 0, 0);
 
     // 如果需要，绘制封面图像
     if (options.useCover && this.coverImage) {
@@ -187,15 +211,15 @@ class ImageProcessor {
     // 重置全局透明度
     ctx.globalAlpha = 1;
 
-    // 返回 PNG Buffer
-    return canvas.toBuffer('image/png');
+    // 转换为 PNG Uint8Array
+    const blob = await canvas.convertToBlob({ type: 'image/png' });
+    return new Uint8Array(await blob.arrayBuffer());
   }
 
   /**
    * 应用亮度效果到画布上下文
-   * 注：Canvas API 的 filter 属性在某些环境中可能不可用
    */
-  private applyBrightness(_ctx: Canvas.CanvasRenderingContext2D, brightness: number): void {
+  private applyBrightness(_ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, brightness: number): void {
     if (brightness === 100) {
       return;
     }
@@ -214,15 +238,7 @@ function validateCompositionOptions(options: unknown): options is CompositionOpt
   }
 
   const opt = options as Record<string, unknown>;
-  const requiredFields: (keyof CompositionOptions)[] = [
-    'posX',
-    'posY',
-    'scale',
-    'opacity',
-    'brightness',
-    'useCover',
-    'coverOpacity',
-  ];
+  const requiredFields = ['pos-x', 'pos-y', 'scale', 'opacity', 'brightness', 'useCover', 'coverOpacity'];
 
   // 检查所有必需字段是否存在
   for (const field of requiredFields) {
@@ -233,8 +249,8 @@ function validateCompositionOptions(options: unknown): options is CompositionOpt
 
   // 验证所有字段的类型和范围
   return (
-    typeof opt.posX === 'number' && opt.posX >= -1 && opt.posX <= 1 &&
-    typeof opt.posY === 'number' && opt.posY >= -1 && opt.posY <= 1 &&
+    typeof opt['pos-x'] === 'number' && opt['pos-x'] >= -1 && opt['pos-x'] <= 1 &&
+    typeof opt['pos-y'] === 'number' && opt['pos-y'] >= -1 && opt['pos-y'] <= 1 &&
     typeof opt.scale === 'number' && opt.scale >= 0.1 && opt.scale <= 3 &&
     typeof opt.opacity === 'number' && opt.opacity >= 0 && opt.opacity <= 1 &&
     typeof opt.brightness === 'number' && opt.brightness >= 0 && opt.brightness <= 200 &&
@@ -243,20 +259,6 @@ function validateCompositionOptions(options: unknown): options is CompositionOpt
   );
 }
 
-/**
- * 将 base64 字符串转换为 Buffer
- */
-function base64ToBuffer(base64String: string): Buffer {
-  const cleanBase64 = base64String.replace(/^data:image\/\w+;base64,/, '');
-  return Buffer.from(cleanBase64, 'base64');
-}
-
-/**
- * 将 Buffer 转换为 base64 字符串
- */
-function bufferToBase64(buffer: Buffer, mimeType: string = 'image/png'): string {
-  return `data:${mimeType};base64,${buffer.toString('base64')}`;
-}
 
 /**
  * 图像合成 API 端点
@@ -342,7 +344,7 @@ export const onRequest: PagesFunction = async (context: PagesContext): Promise<R
           error: {
             code: 'INVALID_OPTIONS',
             message:
-              'Options parameters do not meet requirements. Check: posX [-1,1], posY [-1,1], scale [0.1,3], opacity [0,1], brightness [0,200], useCover (boolean), coverOpacity [0,1]',
+              'Options parameters do not meet requirements. Check: pos-x [-1,1], pos-y [-1,1], scale [0.1,3], opacity [0,1], brightness [0,200], useCover (boolean), coverOpacity [0,1]',
           },
         }),
         {
@@ -360,15 +362,15 @@ export const onRequest: PagesFunction = async (context: PagesContext): Promise<R
 
     try {
       // 加载图像
-      const baseImageBuffer = base64ToBuffer(requestData.baseImage);
-      const overlayImageBuffer = base64ToBuffer(requestData.overlayImage);
+      const baseImageBuffer = base64ToUint8Array(requestData.baseImage);
+      const overlayImageBuffer = base64ToUint8Array(requestData.overlayImage);
 
       await processor.setBaseImage(baseImageBuffer);
       await processor.setOverlayImage(overlayImageBuffer);
 
       // 如果提供了封面图像，加载它
       if (requestData.coverImage) {
-        const coverImageBuffer = base64ToBuffer(requestData.coverImage);
+        const coverImageBuffer = base64ToUint8Array(requestData.coverImage);
         await processor.setCoverImage(coverImageBuffer);
       }
 
@@ -380,7 +382,7 @@ export const onRequest: PagesFunction = async (context: PagesContext): Promise<R
         success: true,
         message: 'Image composition successful',
         data: {
-          image: bufferToBase64(resultBuffer, 'image/png'),
+          image: uint8ArrayToBase64(resultBuffer, 'image/png'),
           processingTime,
         },
       };
