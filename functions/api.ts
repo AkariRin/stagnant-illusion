@@ -169,26 +169,50 @@ class ImageProcessor {
       );
     }
 
-    // 最后一次类型检查和转换
-    const finalPosX = Math.trunc(posX);
-    const finalPosY = Math.trunc(posY);
+    // 最后一次类型检查和转换 - 直接使用原始整数值
+    const finalPosX: number = posX;
+    const finalPosY: number = posY;
 
-    if (typeof finalPosX !== 'number' || typeof finalPosY !== 'number' || !isFinite(finalPosX) || !isFinite(finalPosY)) {
+    // 验证类型和范围
+    if (!Number.isFinite(finalPosX) || !Number.isFinite(finalPosY)) {
       throw new Error(
-        `Final position coordinates are invalid: x=${finalPosX} (type: ${typeof finalPosX}), ` +
-        `y=${finalPosY} (type: ${typeof finalPosY})`
+        `Final position coordinates are not finite: x=${finalPosX}, y=${finalPosY}`
       );
     }
 
-    // 应用透明度
-    compositeImage.opacity(overlayOpacity);
+    // 应用透明度处理
+    if (overlayOpacity < 1) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (compositeImage as any).opacity(overlayOpacity);
+    }
 
     // 将覆盖图像合成到基础图像上
-    // 确保坐标是整数类型
-    resultImage.composite(compositeImage, {
-      x: finalPosX,
-      y: finalPosY,
-    });
+    if (!resultImage || !compositeImage) {
+      throw new Error('Image objects are not properly initialized before composite');
+    }
+
+    console.log(`[Composite] Position: x=${finalPosX}, y=${finalPosY}, types: ${typeof finalPosX}, ${typeof finalPosY}`);
+    console.log(`[Composite] Base size: ${resultImage.bitmap.width}x${resultImage.bitmap.height}`);
+    console.log(`[Composite] Overlay size: ${compositeImage.bitmap.width}x${compositeImage.bitmap.height}`);
+
+    try {
+      // Jimp 1.6.0 的 composite 方法：composite(source, { x, y, ... })
+      // 坐标必须在对象中指定
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (resultImage as any).composite(compositeImage, {
+        x: finalPosX,
+        y: finalPosY,
+      });
+
+    } catch (compositeError: unknown) {
+      const errorMsg = compositeError instanceof Error ? compositeError.message : String(compositeError);
+      console.error(`[Composite Error] ${errorMsg}`);
+
+      throw new Error(
+        `Image composite operation failed: ${errorMsg}. ` +
+        `x=${finalPosX} (${typeof finalPosX}), y=${finalPosY} (${typeof finalPosY})`
+      );
+    }
 
     // 将结果转换为 PNG Buffer
     const result = await resultImage.png().toBuffer();
