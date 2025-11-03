@@ -21,16 +21,21 @@ export interface ComposeImageRequest {
  */
 export type CompositionOptions = Omit<ComposeImageRequest, 'image'>;
 
-function base64ToBuffer(base64String: string): Buffer {
+function base64ToBuffer(base64String: string): Uint8Array {
   // 移除 data: URI scheme 和 mime type
   const cleanBase64 = base64String.split(',')[1] || base64String;
-  return Buffer.from(cleanBase64, 'base64');
+  const binaryString = atob(cleanBase64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
 }
 
 /**
  * 加载资源图片（使用 base64 编码）
  */
-function loadAssetImage(filename: string): Buffer {
+function loadAssetImage(filename: string): Uint8Array {
   let base64Data: string;
 
   if (filename === 'stagnant-illusion.png') {
@@ -62,28 +67,28 @@ class ImageProcessor {
   /**
    * 加载基础图像（底图）
    */
-  async setBaseImage(imageBuffer: Buffer): Promise<void> {
-    this.baseImage = await Jimp.read(imageBuffer);
+  async setBaseImage(imageBuffer: Uint8Array): Promise<void> {
+    this.baseImage = await Jimp.read(imageBuffer.buffer as ArrayBuffer);
   }
 
   /**
    * 加载覆盖层图像
    */
-  async setOverlayImage(imageBuffer: Buffer): Promise<void> {
-    this.overlayImage = await Jimp.read(imageBuffer);
+  async setOverlayImage(imageBuffer: Uint8Array): Promise<void> {
+    this.overlayImage = await Jimp.read(imageBuffer.buffer as ArrayBuffer);
   }
 
   /**
    * 加载封面图像（黄色源石）
    */
-  async setCoverImage(imageBuffer: Buffer): Promise<void> {
-    this.coverImage = await Jimp.read(imageBuffer);
+  async setCoverImage(imageBuffer: Uint8Array): Promise<void> {
+    this.coverImage = await Jimp.read(imageBuffer.buffer as ArrayBuffer);
   }
 
   /**
    * 图像合成 - 使用 jimp 实现完整的像素级合成
    */
-  async compose(options: CompositionOptions): Promise<Buffer> {
+  async compose(options: CompositionOptions): Promise<Uint8Array> {
     if (!this.baseImage) {
       throw new Error('Base image not loaded');
     }
@@ -145,7 +150,12 @@ class ImageProcessor {
     });
 
     // 将结果转换为 PNG Buffer
-    return await resultImage.png().toBuffer();
+    const result = await resultImage.png().toBuffer();
+    // 确保返回 Uint8Array 格式以兼容 Workers 环境
+    if (result instanceof Uint8Array) {
+      return result;
+    }
+    return new Uint8Array(result);
   }
 }
 
@@ -283,15 +293,15 @@ export const onRequest: PagesFunction = async (context: PagesContext): Promise<R
     try {
       // 加载图像
       const baseImageBuffer = base64ToBuffer(requestData.image);
-      // 从 assets 目录加载 overlay 图像 (stagnant-illusion.png)
-      const overlayImageBuffer = loadAssetImage('stagnant-illusion.png');
+      // 从头部导入的 base64 加载 overlay 图像
+      const overlayImageBuffer = base64ToBuffer(STAGNANT_ILLUSION_BASE64);
 
       await processor.setBaseImage(baseImageBuffer);
       await processor.setOverlayImage(overlayImageBuffer);
 
-      // 如果需要 cover，从 assets 目录加载 (yellow.png)
+      // 如果需要 cover，从头部导入的 base64 加载
       if (requestData.useCover) {
-        const coverImageBuffer = loadAssetImage('yellow.png');
+        const coverImageBuffer = base64ToBuffer(YELLOW_BASE64);
         await processor.setCoverImage(coverImageBuffer);
       }
 
@@ -299,7 +309,7 @@ export const onRequest: PagesFunction = async (context: PagesContext): Promise<R
       const resultBuffer = await processor.compose(requestData);
       const processingTime = Date.now() - startTime;
 
-      return new Response(resultBuffer.buffer.slice(resultBuffer.byteOffset, resultBuffer.byteOffset + resultBuffer.byteLength) as ArrayBuffer, {
+      return new Response(resultBuffer.buffer as ArrayBuffer, {
         status: 200,
         headers: {
           'Content-Type': 'image/png',
