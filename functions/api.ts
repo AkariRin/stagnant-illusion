@@ -180,7 +180,7 @@ class ImageProcessor {
       );
     }
 
-    // 应用透明度处理
+    // 应用透明度处理 - 通过调整透明度通道
     if (overlayOpacity < 1) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (compositeImage as any).opacity(overlayOpacity);
@@ -191,18 +191,59 @@ class ImageProcessor {
       throw new Error('Image objects are not properly initialized before composite');
     }
 
-    console.log(`[Composite] Position: x=${finalPosX}, y=${finalPosY}, types: ${typeof finalPosX}, ${typeof finalPosY}`);
+    console.log(`[Composite] Position: x=${finalPosX}, y=${finalPosY}`);
     console.log(`[Composite] Base size: ${resultImage.bitmap.width}x${resultImage.bitmap.height}`);
     console.log(`[Composite] Overlay size: ${compositeImage.bitmap.width}x${compositeImage.bitmap.height}`);
 
     try {
-      // Jimp 1.6.0 的 composite 方法：composite(source, { x, y, ... })
-      // 坐标必须在对象中指定
+      // 使用手动像素操作进行合成，避免 blit/composite API 问题
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (resultImage as any).composite(compositeImage, {
-        x: finalPosX,
-        y: finalPosY,
-      });
+      const baseData = (resultImage as any).bitmap.data;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const overlayData = (compositeImage as any).bitmap.data;
+
+      const baseWidth = resultImage.bitmap.width;
+      const baseHeight = resultImage.bitmap.height;
+      const overlayWidth = compositeImage.bitmap.width;
+      const overlayHeight = compositeImage.bitmap.height;
+
+      // 遍历覆盖层的每一个像素
+      for (let y = 0; y < overlayHeight; y++) {
+        for (let x = 0; x < overlayWidth; x++) {
+          // 计算覆盖层在基础图像中的位置
+          const baseX = finalPosX + x;
+          const baseY = finalPosY + y;
+
+          // 检查是否在基础图像范围内
+          if (baseX >= 0 && baseX < baseWidth && baseY >= 0 && baseY < baseHeight) {
+            // 计算像素索引
+            const overlayIdx = (y * overlayWidth + x) * 4;
+            const baseIdx = (baseY * baseWidth + baseX) * 4;
+
+            // 获取覆盖层像素的 RGBA 值
+            const oR = overlayData[overlayIdx];
+            const oG = overlayData[overlayIdx + 1];
+            const oB = overlayData[overlayIdx + 2];
+            const oA = overlayData[overlayIdx + 3] / 255;
+
+            // 获取基础层像素的 RGBA 值
+            const bR = baseData[baseIdx];
+            const bG = baseData[baseIdx + 1];
+            const bB = baseData[baseIdx + 2];
+            const bA = baseData[baseIdx + 3] / 255;
+
+            // Alpha 合成
+            const outA = oA + bA * (1 - oA);
+
+            if (outA > 0) {
+              baseData[baseIdx] = Math.round((oR * oA + bR * bA * (1 - oA)) / outA);
+              baseData[baseIdx + 1] = Math.round((oG * oA + bG * bA * (1 - oA)) / outA);
+              baseData[baseIdx + 2] = Math.round((oB * oA + bB * bA * (1 - oA)) / outA);
+              baseData[baseIdx + 3] = Math.round(outA * 255);
+            }
+          }
+        }
+      }
 
     } catch (compositeError: unknown) {
       const errorMsg = compositeError instanceof Error ? compositeError.message : String(compositeError);
@@ -210,7 +251,7 @@ class ImageProcessor {
 
       throw new Error(
         `Image composite operation failed: ${errorMsg}. ` +
-        `x=${finalPosX} (${typeof finalPosX}), y=${finalPosY} (${typeof finalPosY})`
+        `Position: x=${finalPosX}, y=${finalPosY}`
       );
     }
 
