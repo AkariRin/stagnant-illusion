@@ -14,7 +14,18 @@ export default defineConfigWithVueTs(
     files: ['**/*.{ts,mts,tsx,vue}'],
   },
 
-  globalIgnores(['**/dist/**', '**/dist-ssr/**', '**/coverage/**']),
+  globalIgnores([
+    '**/dist/**',
+    '**/dist-ssr/**',
+    '**/coverage/**',
+    '**/.wrangler/**',
+    // worker:check 的 dry-run 打包产物
+    '**/.wrangler-dry-run/**',
+    // pngjs 的 workerd 兼容副本，保持上游 CommonJS 原貌，不套用本项目的 TS 规则
+    'worker/pngjs/**',
+    // wrangler types 生成的环境类型，不应手工修改
+    'functions/types.d.ts',
+  ]),
 
   pluginVue.configs['flat/essential'],
   vueTsConfigs.recommended,

@@ -10,31 +10,35 @@
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
     "lint": "eslint . --fix --cache",
-    "format": "prettier --write src/"
+    "format": "prettier --write src/",
+    "worker:dev": "wrangler dev",
+    "worker:deploy": "wrangler deploy",
+    "worker:check": "wrangler deploy --dry-run --outdir .wrangler-dry-run"
   },
   "dependencies": {
-    "@fontsource/roboto": "^5.2.8",
-    "jimp": "^1.6.0",
-    "vue": "^3.5.22",
-    "vuetify": "^3.10.8"
+    "@fontsource/roboto": "^5.3.0",
+    "jimp": "^1.6.1",
+    "vue": "^3.5.44",
+    "vuetify": "^3.13.7"
   },
   "devDependencies": {
     "@mdi/font": "^7.4.47",
-    "@tsconfig/node22": "^22.0.2",
-    "@types/node": "^22.18.11",
-    "@vitejs/plugin-vue": "^6.0.1",
+    "@tsconfig/node22": "^22.0.6",
+    "@types/node": "^22.20.5",
+    "@vitejs/plugin-vue": "^6.0.10",
     "@vue/eslint-config-prettier": "^10.2.0",
-    "@vue/eslint-config-typescript": "^14.6.0",
+    "@vue/eslint-config-typescript": "^14.9.0",
     "@vue/tsconfig": "^0.8.1",
-    "eslint": "^9.37.0",
-    "eslint-plugin-vue": "~10.5.0",
-    "jiti": "^2.6.1",
+    "eslint": "^9.39.5",
+    "eslint-plugin-vue": "~10.5.1",
+    "jiti": "^2.7.0",
     "npm-run-all2": "^8.0.4",
     "prettier": "3.6.2",
-    "typescript": "~5.9.0",
+    "typescript": "~5.9.3",
     "unplugin-fonts": "^1.4.0",
-    "vite": "^7.3.5",
-    "vite-plugin-vue-devtools": "^8.0.3",
-    "vue-tsc": "^3.1.1"
+    "vite": "^7.3.7",
+    "vite-plugin-vue-devtools": "^8.2.1",
+    "vue-tsc": "^3.3.13",
+    "wrangler": "~4.153.0"
   }
 }

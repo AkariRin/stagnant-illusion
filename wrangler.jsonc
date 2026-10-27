@@ -1,0 +1,38 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "stagnant-illusion",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-22",
+  "observability": {
+    "enabled": true,
+    "traces": {
+      "enabled": true,
+    },
+    "issues": {
+      "enabled": true,
+    },
+  },
+  "cache": {
+    "enabled": true,
+  },
+  // jimp 的浏览器版本依赖 Node 内置模块，需 nodejs_compat 提供 zlib / buffer 等实现
+  "compatibility_flags": ["nodejs_compat"],
+  "alias": {
+    // jimp 的 exports 含 browser 条件，wrangler 默认按 workerd,worker,browser 解析，
+    // 而 browser 入口在 npm 包里只是空 stub（export {}），必须强制指向真正实现
+    "jimp": "./node_modules/jimp/dist/esm/index.js",
+    // pngjs 原版用 ES5 风格继承 zlib.Inflate，在 workerd 下会抛
+    // "Class constructor Inflate cannot be invoked without 'new'"，改用本地兼容副本
+    "pngjs": "./worker/pngjs",
+  },
+  "assets": {
+    "directory": "./dist",
+    // 单页应用，未命中的路径回退到 index.html
+    "not_found_handling": "single-page-application",
+    // 只有 /api 交给 Worker，其余请求由 assets 直接响应，
+    // 否则 Worker 会拦截所有未命中路径、导致 SPA 回退失效
+    "run_worker_first": ["/api"],
+  },
+  "workers_dev": false,
+  "preview_urls": false,
+}
